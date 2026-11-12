@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Api } from "./types";
+import { listen } from "@tauri-apps/api/event";
+import type { Api, UpdateState } from "./types";
 
 // One Tauri command per Api method. Command names are snake_case; argument
 // keys are camelCase here and arrive as snake_case parameters in Rust.
@@ -21,4 +22,8 @@ export const tauriApi: Api = {
   addWorktree: (root, branch) => invoke("add_worktree", { root, branch }),
   findRepos: (root, maxDepth) => invoke("find_repos", { root, maxDepth }),
   browseDir: (path) => invoke("browse_dir", { path }),
+  updateState: () => invoke("update_state"),
+  updateCheck: () => invoke("update_check"),
+  updateInstall: () => invoke("update_install"),
+  onUpdateState: (listener) => listen<UpdateState>("update-state", (e) => listener(e.payload)),
 };

@@ -182,6 +182,38 @@ export interface FolderListing {
   dirs: FolderEntry[];
 }
 
+export type UpdatePhase =
+  /** Development build: updates are not available. */
+  | "disabled"
+  /** Nothing has been checked yet. */
+  | "idle"
+  | "checking"
+  | "upToDate"
+  /** A newer version exists; nothing has been downloaded. */
+  | "available"
+  | "downloading"
+  /** The installer has been launched; the app is about to exit. */
+  | "installing"
+  | "error";
+
+export interface UpdateState {
+  phase: UpdatePhase;
+  /** Version of the running app, e.g. "0.1.0". */
+  currentVersion: string;
+  /** Version offered by the release feed. Set from "available" onward, else null. */
+  newVersion: string | null;
+  /** Release notes of newVersion (plain text or Markdown). null when there are none. */
+  notes: string | null;
+  /** Bytes downloaded so far. 0 outside "downloading". */
+  downloaded: number;
+  /** Total bytes when the server reports it, else null. */
+  total: number | null;
+  /** Message of the last failure when phase is "error", else null. */
+  error: string | null;
+  /** Unix seconds of the last check that completed, successfully or not. null before the first. */
+  checkedAt: number | null;
+}
+
 export interface Api {
   /**
    * Folder to open at startup: the first command-line argument when it is an
@@ -273,4 +305,30 @@ export interface Api {
    * folder does not exist or cannot be read.
    */
   browseDir(path: string): Promise<FolderListing>;
+
+  /** Current update state. Never touches the network. */
+  updateState(): Promise<UpdateState>;
+
+  /**
+   * Asks the release feed whether a newer version exists and resolves with
+   * the resulting state: "available", "upToDate", "error", or "disabled" in a
+   * development build. Never downloads. The state is "checking" while it runs.
+   */
+  updateCheck(): Promise<UpdateState>;
+
+  /**
+   * Downloads the newer version, verifies its signature, launches the
+   * installer and restarts the app. Checks first when no newer version is
+   * known yet. Resolves with the state only when nothing was installed
+   * ("upToDate", "error", "disabled"); on success the process exits before
+   * the promise resolves. Progress arrives through onUpdateState. The caller
+   * is responsible for unsaved buffers.
+   */
+  updateInstall(): Promise<UpdateState>;
+
+  /**
+   * Calls `listener` on every state change (the backend emits the
+   * `update-state` event). Resolves to a function that stops listening.
+   */
+  onUpdateState(listener: (state: UpdateState) => void): Promise<() => void>;
 }

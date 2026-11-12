@@ -5,6 +5,7 @@ import { EditorArea } from "./components/EditorArea";
 import { BottomPanel } from "./components/GitPanel";
 import { HelpOverlay, PickerOverlay } from "./components/Overlays";
 import { Resizer } from "./components/Resizer";
+import { SettingsOverlay } from "./components/Settings";
 import { Sidebar } from "./components/Sidebar";
 import { refreshTree } from "./state/tree";
 import { afterFirstPaint, onWindowFocus, openRoot } from "./state/session";
@@ -70,7 +71,7 @@ export default function App(): JSX.Element {
       <StatusBar />
       <FloatingMessage />
       <Show when={ui.overlay} keyed>
-        {(o) => (o.kind === "picker" ? <PickerOverlay kind={o.picker} /> : <HelpOverlay />)}
+        {(o) => (o.kind === "picker" ? <PickerOverlay kind={o.picker} /> : o.kind === "settings" ? <SettingsOverlay /> : <HelpOverlay />)}
       </Show>
     </div>
   );

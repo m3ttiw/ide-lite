@@ -6,7 +6,9 @@ import { continuations } from "../lib/keys";
 import { activeBuffer, activeLanguageName } from "../state/buffers";
 import { message, ui } from "../state/ui";
 import { projectName, repo, root, status } from "../state/workspace";
-import { FileIcon, GitIcon, WorktreeIcon } from "./icons";
+import { FileIcon, GearIcon, GitIcon, WorktreeIcon } from "./icons";
+import { updateState } from "../state/updates";
+import { progressFraction } from "../lib/updates";
 import { Kbd, keyOf } from "./common";
 
 // ------------------------------------------------------------- top bar
@@ -84,6 +86,17 @@ export function Rail(): JSX.Element {
       >
         <WorktreeIcon />
       </button>
+      <span class="rail-push" />
+      <button
+        type="button"
+        class="rail-btn"
+        classList={{ on: ui.overlay?.kind === "settings" }}
+        aria-label="Impostazioni"
+        title={`Impostazioni${keyOf("settings.open") ? " (" + keyOf("settings.open") + ")" : ""}`}
+        onClick={() => runCommand("settings.open")}
+      >
+        <GearIcon />
+      </button>
     </nav>
   );
 }
@@ -104,6 +117,7 @@ export function HintBar(): JSX.Element {
     const o = ui.overlay;
     if (o?.kind === "picker") return HINTS[`picker:${o.picker}`] ? `picker:${o.picker}` : "picker";
     if (o?.kind === "help") return "help";
+    if (o?.kind === "settings") return "settings";
     return HINTS[ui.focusCtx] ? ui.focusCtx : "global";
   };
   const chip = () => {
@@ -111,6 +125,7 @@ export function HintBar(): JSX.Element {
     const o = ui.overlay;
     if (o?.kind === "picker") return PICKER_TITLES[o.picker];
     if (o?.kind === "help") return "Scorciatoie";
+    if (o?.kind === "settings") return "Impostazioni";
     return CONTEXT_TITLES[ui.focusCtx] ?? "Generale";
   };
   const items = createMemo((): { keys: string; label: string }[] => {
@@ -130,7 +145,7 @@ export function HintBar(): JSX.Element {
     if (ui.pending.length) return { keys: "C-g", label: "annulla" };
     if (ui.overlay) {
       const k = keyFor(KEYMAPS[ui.mode], "app.cancel", ["global", ...activeContexts()]);
-      return k ? { keys: k, label: ui.overlay.kind === "help" ? "chiudi" : "annulla" } : null;
+      return k ? { keys: k, label: ui.overlay.kind === "picker" ? "annulla" : "chiudi" } : null;
     }
     const k = keyOf("help.open");
     return k ? { keys: k, label: "tutte le scorciatoie" } : null;
@@ -208,6 +223,22 @@ export function StatusBar(): JSX.Element {
       <Show when={b()}>
         <span>{activeLanguageName()}</span>
         <span>UTF-8 · {b()!.eol === "crlf" ? "CRLF" : "LF"}</span>
+      </Show>
+      <Show when={updateState()?.newVersion && ["available", "downloading", "installing"].includes(updateState()!.phase) ? updateState() : null}>
+        {(u) => (
+          <button
+            type="button"
+            class="sb-btn sb-update"
+            title={u().phase === "available" ? `Scarica e installa ide-lite ${u().newVersion}` : undefined}
+            onClick={() => runCommand(u().phase === "available" ? "app.update" : "settings.open")}
+          >
+            {u().phase === "downloading"
+              ? `Aggiornamento ${u().newVersion} · ${progressFraction(u().downloaded, u().total) === null ? "…" : Math.floor(progressFraction(u().downloaded, u().total)! * 100) + "%"}`
+              : u().phase === "installing"
+                ? `Installazione ${u().newVersion}…`
+                : `Aggiornamento ${u().newVersion}`}
+          </button>
+        )}
       </Show>
       <button type="button" class="sb-btn" title="Cambia tasti" onClick={() => runCommand("keymap.toggle")}>
         Tasti: {MODE_NAMES[ui.mode]}

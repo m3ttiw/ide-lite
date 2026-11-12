@@ -10,6 +10,8 @@ mod gitcmd;
 mod paths;
 mod repos;
 mod types;
+mod update;
+mod update_tauri;
 mod worktree;
 
 #[cfg(test)]
@@ -134,6 +136,25 @@ async fn browse_dir(path: String) -> Result<FolderListing, String> {
     blocking(move || repos::browse_dir(&path)).await
 }
 
+#[tauri::command]
+async fn update_state(app: tauri::AppHandle) -> Result<update::UpdateState, String> {
+    Ok(update_tauri::snapshot(&app))
+}
+
+#[tauri::command]
+async fn update_check(app: tauri::AppHandle) -> Result<update::UpdateState, String> {
+    Ok(update_tauri::check(&app).await)
+}
+
+#[tauri::command]
+async fn update_install(app: tauri::AppHandle) -> Result<update::UpdateState, String> {
+    Ok(update_tauri::install(&app).await)
+}
+
+// Automatic checks are scheduled by the UI (15 s after start, then every
+// 6 hours), because the "check automatically" preference lives there. The
+// backend only checks when asked.
+
 /// The UI implements its own shortcuts (Ctrl+R, Ctrl+P, Ctrl+F, F5, ...), so
 /// WebView2's browser accelerator keys (reload, print, find, devtools, ...)
 /// are turned off. Tauri has no builder option for this; the setting is
@@ -161,9 +182,12 @@ fn disable_browser_accelerator_keys(app: &tauri::App) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .setup(|_app| {
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .setup(|app| {
+            use tauri::Manager;
+            app.manage(update_tauri::Updates::new(app.package_info().version.to_string()));
             #[cfg(windows)]
-            disable_browser_accelerator_keys(_app);
+            disable_browser_accelerator_keys(app);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -184,6 +208,9 @@ pub fn run() {
             add_worktree,
             find_repos,
             browse_dir,
+            update_state,
+            update_check,
+            update_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

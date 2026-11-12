@@ -51,6 +51,15 @@ let folderHandle: FolderHandle | null = null;
 export const setFolderHandle = (h: FolderHandle | null) => (folderHandle = h);
 export const getFolderHandle = () => folderHandle;
 
+export interface SettingsHandle {
+  move(delta: 1 | -1): void;
+  activate(): void;
+  scrollNotes(dir: 1 | -1): void;
+}
+let settingsHandle: SettingsHandle | null = null;
+export const setSettingsHandle = (h: SettingsHandle | null) => (settingsHandle = h);
+export const getSettingsHandle = () => settingsHandle;
+
 export interface HelpHandle {
   scroll(px: number): void;
   page(dir: 1 | -1): void;

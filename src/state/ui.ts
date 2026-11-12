@@ -3,7 +3,7 @@ import { createStore } from "solid-js/store";
 import type { Mode } from "../core/keymaps";
 
 export type PickerKind = "file" | "buffer" | "command" | "worktree" | "folder" | "project";
-export type Overlay = null | { kind: "picker"; picker: PickerKind } | { kind: "help" };
+export type Overlay = null | { kind: "picker"; picker: PickerKind } | { kind: "help" } | { kind: "settings" };
 export type BottomTab = "history" | "changes";
 
 const GLOBAL_KEY = "ide-lite:prefs";
@@ -15,6 +15,8 @@ interface Prefs {
   container: string | null;
   /** Workspace roots opened, most recent first. */
   recents: string[];
+  /** Check for updates at startup and every 6 hours. */
+  autoUpdate: boolean;
 }
 
 function loadPrefs(): Prefs {
@@ -25,9 +27,10 @@ function loadPrefs(): Prefs {
       hintsVisible: p.hintsVisible !== false,
       container: typeof p.container === "string" && p.container ? p.container : null,
       recents: Array.isArray(p.recents) ? p.recents.filter((x: unknown) => typeof x === "string") : [],
+      autoUpdate: p.autoUpdate !== false,
     };
   } catch {
-    return { mode: "emacs", hintsVisible: true, container: null, recents: [] };
+    return { mode: "emacs", hintsVisible: true, container: null, recents: [], autoUpdate: true };
   }
 }
 
@@ -38,6 +41,7 @@ export const [ui, setUi] = createStore({
   hintsVisible: prefs.hintsVisible,
   container: prefs.container,
   recents: prefs.recents,
+  autoUpdate: prefs.autoUpdate,
   sidebarVisible: true,
   sidebarWidth: 260,
   bottomVisible: true,
@@ -53,7 +57,7 @@ export const [ui, setUi] = createStore({
 
 export function savePrefs(): void {
   try {
-    localStorage.setItem(GLOBAL_KEY, JSON.stringify({ mode: ui.mode, hintsVisible: ui.hintsVisible, container: ui.container, recents: ui.recents }));
+    localStorage.setItem(GLOBAL_KEY, JSON.stringify({ mode: ui.mode, hintsVisible: ui.hintsVisible, container: ui.container, recents: ui.recents, autoUpdate: ui.autoUpdate }));
   } catch {
     /* storage unavailable */
   }

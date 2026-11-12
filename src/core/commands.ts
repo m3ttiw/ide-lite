@@ -3,8 +3,9 @@ import { dirname } from "../lib/path";
 import { bufs, closeBuffer, currentEditor, dirtyBuffers, openFile, saveActive } from "../state/buffers";
 import {
   closeOverlay, diffHandles, focusBottom, focusEditor, focusNext, focusTree, getActiveDiff, getFolderHandle, getHelpHandle,
-  getPickerHandle, listHandles, openOverlay, pickerQuery,
+  getPickerHandle, getSettingsHandle, listHandles, openOverlay, pickerQuery,
 } from "../state/focus";
+import { runUpdate } from "../state/updates";
 import { openProjectPicker } from "../state/projects";
 import { refreshChangeDiff, reloadLog, commits } from "../state/git";
 import { switchRoot } from "../state/session";
@@ -205,6 +206,13 @@ def("worktree.create", "Nuovo worktree con questo nome", async () => {
   closeOverlay();
   if (await switchRoot(wt.path)) flash(`Creato il worktree ${name} in ${wt.path}`);
 }, false);
+def("settings.open", "Impostazioni", () => openOverlay({ kind: "settings" }));
+def("app.update", "Aggiorna ide-lite", () => runUpdate());
+def("settings.next", "Controllo successivo", () => getSettingsHandle()?.move(1), false);
+def("settings.prev", "Controllo precedente", () => getSettingsHandle()?.move(-1), false);
+def("settings.activate", "Attiva", () => getSettingsHandle()?.activate(), false);
+def("settings.pageDown", "Scorri le note giù", () => getSettingsHandle()?.scrollNotes(1), false);
+def("settings.pageUp", "Scorri le note su", () => getSettingsHandle()?.scrollNotes(-1), false);
 def("folder.enter", "Entra nella cartella", () => getFolderHandle()?.enter(), false);
 def("folder.up", "Cartella superiore", () => getFolderHandle()?.up(), false);
 def("folder.openHere", "Apri la cartella evidenziata", () => getFolderHandle()?.openHere(), false);

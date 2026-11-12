@@ -22,6 +22,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tauri-plugin-updater = "2"
 
 # Already in the tree through tauri-runtime-wry; used to turn off WebView2's
 # browser accelerator keys (Tauri exposes no option for it).

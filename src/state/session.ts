@@ -7,6 +7,7 @@ import { expandedList, loadDir, resetTree, restoreExpanded } from "./tree";
 import { errorText, flash, setUi, ui, type BottomTab } from "./ui";
 import { generation, nextGeneration, refreshRepo, refreshStatus, root, setRepo, setRoot, setStatus } from "./workspace";
 import { afterOpen } from "./projects";
+import { startAutoUpdates } from "./updates";
 import { loadWorktrees, resetWorktrees } from "./worktrees";
 
 interface Session {
@@ -111,6 +112,8 @@ export function afterFirstPaint(): void {
     prefetchEditor();
     if (root()) void loadWorktrees();
   });
+  // only a timer: the first update call happens 15 s after startup
+  startAutoUpdates();
 }
 
 export async function switchRoot(folder: string, force = false): Promise<boolean> {

@@ -3,7 +3,7 @@
 
 use crate::paths::{canonical_slash, clean_rel, to_slash};
 use crate::types::*;
-use crate::{diff, fsops, git, repos, worktree};
+use crate::{diff, fsops, git, repos, update, worktree};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -1111,4 +1111,128 @@ fn browse_dir_roots() {
         let drive = &l.path[..2];
         assert_eq!(repos::browse_dir(drive).unwrap().path, l.path, "bare drive letter");
     }
+}
+
+// ---------------------------------------------------------------- self-update state machine
+
+#[test]
+fn update_state_json_contract() {
+    use update::{UpdatePhase, UpdateState};
+    let st = UpdateState {
+        phase: UpdatePhase::UpToDate,
+        current_version: "0.1.0".into(),
+        new_version: None,
+        notes: None,
+        downloaded: 0,
+        total: None,
+        error: None,
+        checked_at: Some(1),
+    };
+    let v = expect_keys(
+        &st,
+        &["phase", "currentVersion", "newVersion", "notes", "downloaded", "total", "error", "checkedAt"],
+    );
+    assert_eq!(v["phase"], "upToDate");
+    let phases: Vec<serde_json::Value> = [
+        UpdatePhase::Disabled,
+        UpdatePhase::Idle,
+        UpdatePhase::Checking,
+        UpdatePhase::UpToDate,
+        UpdatePhase::Available,
+        UpdatePhase::Downloading,
+        UpdatePhase::Installing,
+        UpdatePhase::Error,
+    ]
+    .iter()
+    .map(|p| serde_json::to_value(p).unwrap())
+    .collect();
+    assert_eq!(phases, ["disabled", "idle", "checking", "upToDate", "available", "downloading", "installing", "error"]);
+}
+
+#[test]
+fn update_machine_disabled_never_moves() {
+    use update::{Machine, Refused, UpdatePhase};
+    let mut m = Machine::new("0.1.0", false);
+    assert_eq!(m.phase(), UpdatePhase::Disabled);
+    assert_eq!(m.begin_check(), Err(Refused::Disabled));
+    assert_eq!(m.begin_download(), Err(Refused::Disabled));
+    m.fail("x");
+    m.progress(10, Some(20));
+    assert_eq!(m.phase(), UpdatePhase::Disabled);
+    assert_eq!(m.state().current_version, "0.1.0");
+    assert_eq!((m.state().downloaded, m.state().error.clone()), (0, None));
+}
+
+#[test]
+fn update_machine_check_install_flow() {
+    use update::{CheckOutcome, Machine, Refused, UpdatePhase};
+    let mut m = Machine::new("0.1.0", true);
+    assert_eq!(m.phase(), UpdatePhase::Idle);
+    assert_eq!(m.state().checked_at, None);
+    // Nothing to download before a check found something.
+    assert_eq!(m.begin_download(), Err(Refused::WrongPhase));
+
+    m.begin_check().unwrap();
+    assert_eq!(m.phase(), UpdatePhase::Checking);
+    assert_eq!(m.begin_check(), Err(Refused::Busy), "no second check while one runs");
+    m.finish_check(CheckOutcome::UpToDate, 100).unwrap();
+    assert_eq!((m.phase(), m.state().checked_at, m.state().new_version.clone()), (UpdatePhase::UpToDate, Some(100), None));
+    assert_eq!(m.finish_check(CheckOutcome::UpToDate, 1), Err(Refused::WrongPhase));
+
+    m.begin_check().unwrap();
+    m.finish_check(CheckOutcome::Available { version: "0.2.0".into(), notes: Some("notes".into()) }, 200).unwrap();
+    let s = m.state().clone();
+    assert_eq!((s.phase, s.new_version.as_deref(), s.notes.as_deref(), s.checked_at), (UpdatePhase::Available, Some("0.2.0"), Some("notes"), Some(200)));
+
+    m.begin_download().unwrap();
+    assert_eq!(m.phase(), UpdatePhase::Downloading);
+    assert_eq!(m.begin_download(), Err(Refused::Busy), "no second download");
+    assert_eq!(m.begin_check(), Err(Refused::Busy));
+    m.progress(10, Some(30));
+    m.progress(15, None);
+    assert_eq!((m.state().downloaded, m.state().total), (25, Some(30)));
+    assert_eq!(m.state().new_version.as_deref(), Some("0.2.0"));
+    m.begin_install().unwrap();
+    assert_eq!(m.phase(), UpdatePhase::Installing);
+    assert_eq!(m.begin_check(), Err(Refused::Busy));
+    m.progress(5, None);
+    assert_eq!(m.state().downloaded, 25, "progress ignored outside downloading");
+}
+
+#[test]
+fn update_machine_errors_are_recoverable() {
+    use update::{CheckOutcome, Machine, UpdatePhase};
+    let mut m = Machine::new("0.1.0", true);
+    m.begin_check().unwrap();
+    m.finish_check(CheckOutcome::Failed("cannot reach the release server".into()), 5).unwrap();
+    let s = m.state().clone();
+    assert_eq!((s.phase, s.error.as_deref(), s.checked_at), (UpdatePhase::Error, Some("cannot reach the release server"), Some(5)));
+
+    // A new check clears the error.
+    m.begin_check().unwrap();
+    assert_eq!(m.state().error, None);
+    m.finish_check(CheckOutcome::Available { version: "0.3.0".into(), notes: Some("  ".into()) }, 6).unwrap();
+    assert_eq!(m.state().notes, None, "blank notes become null");
+    m.begin_download().unwrap();
+    m.progress(100, Some(1000));
+    m.fail("signature mismatch");
+    let s = m.state().clone();
+    assert_eq!((s.phase, s.downloaded, s.total, s.new_version), (UpdatePhase::Error, 0, None, None));
+    m.fail("");
+    assert_eq!(m.state().error.as_deref(), Some("update failed"));
+    assert!(m.begin_check().is_ok(), "error -> checking");
+}
+
+#[test]
+fn update_progress_throttle() {
+    let mut t = update::Throttle::default();
+    assert!(t.should_emit(0, 10, Some(10_000)), "first chunk");
+    assert!(!t.should_emit(10, 20, Some(10_000)));
+    assert!(t.should_emit(20, 200, Some(10_000)), "1 % more");
+    assert!(t.should_emit(200, 210, Some(10_000)), "100 ms later");
+    assert!(t.should_emit(201, 10_000, Some(10_000)), "final chunk");
+    let mut t = update::Throttle::default();
+    assert!(t.should_emit(0, 1, None));
+    assert!(!t.should_emit(50, 1_000_000, None), "unknown total: time based only");
+    assert!(t.should_emit(150, 1_000_001, None));
 }

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ide-lite",
-  "version": "0.1.0",
+  "version": "../package.json",
   "identifier": "dev.idelite.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -25,13 +25,28 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDA4NTk1MTRDNkMyOThDRkMKUldUOGpDbHNURkZaQ0JBT0dnVDNxQUhXTWtycUk5Y08yTXo0Y3lyeUlJRUpTUlRyNFM5RGV3ZzEK",
+      "endpoints": [
+        "https://github.com/m3ttiw/ide-lite/releases/latest/download/latest.json"
+      ],
+      "requireSignedVersion": true,
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

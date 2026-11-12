@@ -1,0 +1,119 @@
+name: Release
+
+# Builds the signed Windows installer for a vX.Y.Z tag and publishes it
+# atomically: the GitHub Release is created as a DRAFT, every asset is
+# uploaded, and only then is it published. A failed run leaves at most a draft,
+# which the updater never sees (releases/latest ignores drafts).
+#
+# The build job holds no write permission; only the publish job, which runs no
+# project code, can write releases.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Test and build (Windows x64)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: Tag matches package.json
+        run: npm run release:check
+
+      - name: Interface tests
+        run: npm test
+
+      # `cargo test` compiles generate_context!(), which needs the built frontend.
+      - name: Build the interface
+        run: npm run build
+
+      - name: Backend tests
+        working-directory: src-tauri
+        run: cargo test --locked
+
+      - name: Build and sign the installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build --ci
+
+      - name: Write latest.json
+        run: npm run release:manifest -- --dir src-tauri/target/release/bundle/nsis --tag "$env:GITHUB_REF_NAME" --repo "$env:GITHUB_REPOSITORY" --out dist-release/latest.json
+
+      - name: Collect release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp src-tauri/target/release/bundle/nsis/*_x64-setup.exe dist-release/
+          cp src-tauri/target/release/bundle/nsis/*_x64-setup.exe.sig dist-release/
+          ls -l dist-release
+          test "$(ls dist-release | wc -l)" -eq 3
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-assets
+          path: dist-release/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-assets
+          path: assets
+
+      - name: Create or reuse the draft
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            if [[ "$(gh release view "$tag" --json isDraft --jq .isDraft)" != "true" ]]; then
+              echo "Release $tag is already published and cannot be overwritten." >&2
+              exit 1
+            fi
+            # Re-run: drop the assets of the previous attempt.
+            gh release view "$tag" --json assets --jq '.assets[].name' | while IFS= read -r asset; do
+              [[ -n "$asset" ]] && gh release delete-asset "$tag" "$asset" --yes
+            done
+          else
+            gh release create "$tag" --verify-tag --draft --generate-notes --title "ide-lite $tag"
+          fi
+
+      - name: Upload assets to the draft
+        run: gh release upload "$GITHUB_REF_NAME" assets/* --clobber
+
+      - name: Publish
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --latest

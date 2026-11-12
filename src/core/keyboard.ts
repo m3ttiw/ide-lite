@@ -24,6 +24,7 @@ export function activeContexts(): string[] {
   const o = ui.overlay;
   if (o?.kind === "picker") return [`picker:${o.picker}`, "picker", "global"];
   if (o?.kind === "help") return ["help", "global"];
+  if (o?.kind === "settings") return ["settings", "global"];
   return [ui.focusCtx, "global"];
 }
 

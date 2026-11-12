@@ -3,7 +3,7 @@
 
 import type {
   Api, Commit, CommitFile, CommitRef, DiffHunk, DiffLine, DirEntry, FileContent, FileDiff, FileStatus,
-  FolderEntry, FolderListing, RepoEntry, RepoInfo, StatusEntry, Worktree, WorktreeStatus,
+  FolderEntry, FolderListing, RepoEntry, RepoInfo, StatusEntry, UpdateState, Worktree, WorktreeStatus,
 } from "./types";
 import * as D from "./mockData";
 
@@ -622,6 +622,74 @@ function listDir(fs: Map<string, MockFile>, dir: string): DirEntry[] {
   return [...[...dirs].sort(cmp).map((n) => mk(n, "dir")), ...[...files].sort(cmp).map((n) => mk(n, "file"))];
 }
 
+// ---------------------------------------------------------------- updates
+//
+// Scenario: `?update=<name>` in the URL (remembered in localStorage under
+// `ide-lite:mock-update`), else that localStorage key, else "uptodate".
+//   uptodate        the check finds nothing newer
+//   available       0.2.0 is offered; download with progress, then "installing"
+//   check-error     the check fails
+//   download-error  0.2.0 is offered, the download fails halfway
+//   disabled        development build: updates unavailable
+
+type UpdateScenario = "uptodate" | "available" | "check-error" | "download-error" | "disabled";
+const SCENARIOS: UpdateScenario[] = ["uptodate", "available", "check-error", "download-error", "disabled"];
+
+function updateScenario(): UpdateScenario {
+  try {
+    const fromUrl = new URLSearchParams(location.search).get("update");
+    if (fromUrl && (SCENARIOS as string[]).includes(fromUrl)) {
+      localStorage.setItem("ide-lite:mock-update", fromUrl);
+      return fromUrl as UpdateScenario;
+    }
+    const s = localStorage.getItem("ide-lite:mock-update");
+    if (s && (SCENARIOS as string[]).includes(s)) return s as UpdateScenario;
+  } catch {
+    /* storage unavailable */
+  }
+  return "uptodate";
+}
+
+const SCENARIO = updateScenario();
+const NEW_VERSION = "0.2.0";
+const NOTES = [
+  "Novità di ide-lite 0.2.0",
+  "",
+  "- Selettore dei progetti (C-x p) e browser delle cartelle (C-x d)",
+  "- Impostazioni e aggiornamenti automatici",
+  "- Il diff mostra le righe lunghe per intero",
+  "",
+  "Le note sono testo semplice: <b>questo tag</b> non deve diventare grassetto.",
+  ...Array.from({ length: 14 }, (_, i) => `- correzione minore n. ${i + 1}`),
+].join("\n");
+
+let upd: UpdateState = {
+  phase: SCENARIO === "disabled" ? "disabled" : "idle",
+  currentVersion: "0.1.0",
+  newVersion: null,
+  notes: null,
+  downloaded: 0,
+  total: null,
+  error: null,
+  checkedAt: null,
+};
+const updListeners = new Set<(s: UpdateState) => void>();
+function setUpd(patch: Partial<UpdateState>): UpdateState {
+  upd = { ...upd, ...patch };
+  for (const l of updListeners) l({ ...upd });
+  return { ...upd };
+}
+
+async function mockCheck(): Promise<UpdateState> {
+  if (upd.phase === "disabled") return { ...upd };
+  setUpd({ phase: "checking", error: null });
+  await sleep(900);
+  const now = Math.floor(Date.now() / 1000);
+  if (SCENARIO === "check-error") return setUpd({ phase: "error", error: "Impossibile raggiungere il feed delle versioni (mock)", checkedAt: now });
+  if (SCENARIO === "uptodate") return setUpd({ phase: "upToDate", newVersion: null, notes: null, checkedAt: now });
+  return setUpd({ phase: "available", newVersion: NEW_VERSION, notes: NOTES, checkedAt: now });
+}
+
 export const mockApi: Api = {
   async initialRoot() {
     await latency(5, 15);
@@ -756,6 +824,44 @@ export const mockApi: Api = {
     const ab = b ? aheadBehind(wt.head, b) : { ahead: 0, behind: 0 };
     const s: WorktreeStatus = { ...ab, dirty: statusFor(wt.path).length };
     return s;
+  },
+
+  async updateState() {
+    return { ...upd };
+  },
+
+  async updateCheck() {
+    if (upd.phase === "checking") {
+      while (upd.phase === "checking") await sleep(50);
+      return { ...upd };
+    }
+    return mockCheck();
+  },
+
+  async updateInstall() {
+    if (upd.phase === "disabled") return { ...upd };
+    if (upd.phase !== "available") {
+      const s = await mockCheck();
+      if (s.phase !== "available") return s;
+    }
+    const total = 18 * 1024 * 1024;
+    setUpd({ phase: "downloading", downloaded: 0, total, error: null });
+    for (let got = 0; got < total; ) {
+      await sleep(120);
+      got = Math.min(total, got + 640 * 1024);
+      if (SCENARIO === "download-error" && got > total / 2) {
+        return setUpd({ phase: "error", downloaded: 0, total: null, error: "Download interrotto: connessione chiusa dal server (mock)" });
+      }
+      setUpd({ downloaded: got });
+    }
+    setUpd({ phase: "installing", downloaded: 0, total: null });
+    // the real app exits here; the mock stays in "installing" until a reload
+    return new Promise<UpdateState>(() => {});
+  },
+
+  async onUpdateState(listener) {
+    updListeners.add(listener);
+    return () => updListeners.delete(listener);
   },
 
   async findRepos(root, maxDepth) {

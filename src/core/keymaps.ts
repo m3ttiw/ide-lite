@@ -14,6 +14,7 @@ export const CONTEXT_TITLES: Record<string, string> = {
   "picker:worktree": "Selettore worktree",
   "picker:folder": "Sfoglia cartelle",
   "picker:project": "Cambia progetto",
+  settings: "Impostazioni",
   help: "Scorciatoie",
 };
 
@@ -37,6 +38,17 @@ const pickerCommon = (mode: Mode): Binding[] => [
     ["<left>", "folder.up"],
     ...(mode === "emacs" ? ([["C-l", "folder.up"]] as [string, string][]) : []),
     ["C-RET", "folder.openHere"],
+  ]),
+  ...t("settings", [
+    ...(mode === "emacs" ? ([["C-n", "settings.next"], ["C-p", "settings.prev"]] as [string, string][]) : []),
+    ["<down>", "settings.next"],
+    ["<up>", "settings.prev"],
+    ["RET", "settings.activate"],
+    ["SPC", "settings.activate"],
+    ["<next>", "settings.pageDown"],
+    ["<prior>", "settings.pageUp"],
+    ["q", "app.cancel"],
+    ["ESC", "app.cancel"],
   ]),
   ...t("help", [
     ...(mode === "emacs" ? ([["C-n", "help.down"], ["C-p", "help.up"], ["C-v", "help.pageDown"], ["M-v", "help.pageUp"]] as [string, string][]) : []),
@@ -88,6 +100,7 @@ const EMACS: Binding[] = [
     ["C-x w", "worktree.pick"],
     ["C-x d", "folder.browse"],
     ["C-x p", "project.pick"],
+    ["C-,", "settings.open"],
     ["C-x 1", "panel.toggleBottom"],
     ["C-x C-c", "app.quit"],
     ["M-x", "palette.open"],
@@ -151,6 +164,7 @@ const STANDARD: Binding[] = [
     ["C-S-w", "worktree.pick"],
     ["C-o", "folder.browse"],
     ["C-r", "project.pick"],
+    ["C-,", "settings.open"],
     ["C-b", "sidebar.toggle"],
     ["C-j", "panel.toggleBottom"],
     ["<f6>", "focus.next"],
@@ -249,6 +263,7 @@ export const HINTS: Record<string, HintSpec[]> = {
   ],
   "picker:project": [h("scorre", "picker.next", "picker.prev"), h("apri", "picker.accept"), h("sfoglia cartelle", "folder.browse")],
   help: [h("scorre", "help.down", "help.up"), h("chiudi", "app.cancel")],
+  settings: [h("scorre", "settings.next", "settings.prev"), h("attiva", "settings.activate")],
   global: [
     h("apri file", "file.quickOpen"),
     h("comandi", "palette.open"),

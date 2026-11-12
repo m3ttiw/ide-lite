@@ -16,6 +16,7 @@ const METHODS = [
   "initialRoot", "pickFolder", "repoInfo", "listDir", "listFiles", "readFile", "writeFile",
   "gitStatus", "gitLog", "commitFiles", "commitFileDiff", "workingFileDiff", "listWorktrees",
   "worktreeStatus", "addWorktree", "findRepos", "browseDir",
+  "updateState", "updateCheck", "updateInstall", "onUpdateState",
 ] as const satisfies readonly (keyof Api)[];
 
 type AnyFn = (...args: unknown[]) => Promise<unknown>;
