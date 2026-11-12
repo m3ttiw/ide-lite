@@ -2,7 +2,7 @@
 // version from package.json, and (when a tag is given) the tag is v<version>.
 //
 //   node scripts/check-release-version.mjs [vX.Y.Z]
-//   GITHUB_REF_NAME=vX.Y.Z node scripts/check-release-version.mjs
+//   GITHUB_REF_TYPE=tag GITHUB_REF_NAME=vX.Y.Z node scripts/check-release-version.mjs
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,7 +10,10 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
 const tauri = JSON.parse(readFileSync(resolve(root, "src-tauri", "tauri.conf.json"), "utf8"));
-const tag = process.argv[2] || process.env.GITHUB_REF_NAME || "";
+// On GitHub, GITHUB_REF_NAME is the branch name on a branch build ("main"):
+// it is a release tag only when the ref that started the run is a tag.
+const envTag = process.env.GITHUB_REF_TYPE === "tag" ? process.env.GITHUB_REF_NAME : "";
+const tag = process.argv[2] || envTag || "";
 
 const fail = (msg) => {
   console.error(msg);
