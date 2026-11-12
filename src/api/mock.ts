@@ -409,6 +409,19 @@ function fsFor(root: string): Map<string, MockFile> {
   return plainFs;
 }
 
+/** A file of a plain folder workspace may live inside one of its repositories (multi-repository mode). */
+function fileAt(root: string, path: string): { fs: Map<string, MockFile>; path: string } {
+  const r = canon(root);
+  if (!worktreeOf(r) && !extraRepoOf(r) && folders.has(r)) {
+    const abs = `${r === "/" ? "" : r.replace(/\/$/, "")}/${path}`;
+    const wt = worktreeOf(abs);
+    if (wt) return { fs: repoFs, path: abs.slice(wt.path.length + 1) };
+    const er = extraRepoOf(abs);
+    if (er) return { fs: extraFsOf(er), path: abs.slice(er.length + 1) };
+  }
+  return { fs: fsFor(root), path };
+}
+
 /** Plain folders of the fake filesystem list their sub-folders too, repositories included. */
 function listPlainTree(rootAbs: string, dir: string): DirEntry[] | null {
   const abs = dir ? `${rootAbs === "/" ? "" : rootAbs.replace(/\/$/, "")}/${dir}` : rootAbs;
@@ -729,7 +742,8 @@ export const mockApi: Api = {
 
   async readFile(root, path) {
     await latency(5, 30);
-    const f = fsFor(root).get(path);
+    const at = fileAt(root, path);
+    const f = at.fs.get(at.path);
     if (!f) throw `File non trovato: ${path}`;
     if (f.binary) return { text: "", binary: true, tooLarge: false, eol: "lf" };
     if (f.tooLarge) return { text: "", binary: false, tooLarge: true, eol: "lf" };
@@ -741,10 +755,10 @@ export const mockApi: Api = {
 
   async writeFile(root, path, text) {
     await latency(10, 40);
-    const fs = fsFor(root);
-    const prev = fs.get(path);
-    if (fs === repoFs && !original.has(path)) original.set(path, prev ? fileText(prev) : null);
-    fs.set(path, { text });
+    const { fs, path: p } = fileAt(root, path);
+    const prev = fs.get(p);
+    if (fs === repoFs && !original.has(p)) original.set(p, prev ? fileText(prev) : null);
+    fs.set(p, { text });
   },
 
   async gitStatus(root) {

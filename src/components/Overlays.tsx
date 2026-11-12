@@ -9,10 +9,12 @@ import { CONTEXT_TITLES, KEYMAPS, MODE_NAMES, keyFor } from "../core/keymaps";
 import { fuzzyMatchPath, fuzzyMatchText, rank } from "../lib/fuzzy";
 import { basename, dirname, displayWorktreePath } from "../lib/path";
 import { activate, bufs, mruPaths, openFile } from "../state/buffers";
-import { closeOverlay, getFolderHandle, getPickerHandle, pickerQuery, setFolderHandle, setHelpHandle, setPickerHandle, setPickerQuery } from "../state/focus";
+import { closeOverlay, focusBottom, getFolderHandle, getPickerHandle, pickerQuery, setFolderHandle, setHelpHandle, setPickerHandle, setPickerQuery } from "../state/focus";
 import { switchRoot } from "../state/session";
 import { errorText, flash, ui, type PickerKind } from "../state/ui";
-import { generation, root } from "../state/workspace";
+import { activeRepo, generation, gitRoot, isFolderWs, repoPrefix, root } from "../state/workspace";
+import { activateRepo, openWorktree } from "../state/activeRepo";
+import { samePath, toWorkspacePath } from "../lib/gitroot";
 import { describeStatus, ensureWtStatus, needsWtStatus, loadingList, mainWorktree, worktrees, wtStatus } from "../state/worktrees";
 import { Highlight, Kbd, keyOf } from "./common";
 import { VirtualList, type VirtualListApi } from "./VirtualList";
@@ -197,15 +199,19 @@ function KeysFooter(props: { items: [string, string][] }): JSX.Element {
 let filesCache: { root: string; files: string[] } | null = null;
 
 function FilePicker(): JSX.Element {
-  const [files, setFiles] = createSignal<string[] | null>(filesCache?.root === root() ? filesCache.files : null);
+  // folder workspace with an active repository: its files (git ls-files), shown with their workspace path
+  const prefix = isFolderWs() && activeRepo() ? repoPrefix() : null;
+  const r = prefix !== null ? gitRoot() : root();
+  const cacheKey = `${root()}\0${r}`;
+  const [files, setFiles] = createSignal<string[] | null>(filesCache?.root === cacheKey ? filesCache.files : null);
   const g = generation();
-  const r = root();
   api
     .listFiles(r)
     .then((list) => {
       if (g !== generation()) return;
-      filesCache = { root: r, files: list };
-      setFiles(list);
+      const mapped = prefix ? list.map((p) => toWorkspacePath(prefix, p)!) : list;
+      filesCache = { root: cacheKey, files: mapped };
+      setFiles(mapped);
     })
     .catch((e) => {
       setFiles([]);
@@ -339,9 +345,9 @@ function WorktreePicker(): JSX.Element {
   const ordered = createMemo(() => {
     const list = worktrees();
     if (!list) return loadingList() ? null : [];
-    const cur = list.filter((w) => w.path === root());
-    const main = list.filter((w) => w.isMain && w.path !== root());
-    const rest = list.filter((w) => !w.isMain && w.path !== root());
+    const cur = list.filter((w) => samePath(w.path, gitRoot()));
+    const main = list.filter((w) => w.isMain && !samePath(w.path, gitRoot()));
+    const rest = list.filter((w) => !w.isMain && !samePath(w.path, gitRoot()));
     return [...cur, ...main, ...rest];
   });
   const label = (w: Worktree) => w.branch ?? `(staccato) ${w.head.slice(0, 7)}`;
@@ -364,7 +370,7 @@ function WorktreePicker(): JSX.Element {
         },
         render: (res) => {
           const w = res.item;
-          const isCur = w.path === root();
+          const isCur = samePath(w.path, gitRoot());
           // only rows that are rendered (on screen, plus a few) ask for their numbers
           createEffect(() => {
             if (needsWtStatus(w.path)) ensureWtStatus(w.path);
@@ -387,8 +393,8 @@ function WorktreePicker(): JSX.Element {
             return;
           }
           closeOverlay();
-          if (res.item.path === root()) return flash("Sei già in questo worktree");
-          void switchRoot(res.item.path);
+          if (samePath(res.item.path, gitRoot())) return flash("Sei già in questo worktree");
+          void openWorktree(res.item.path, (p) => switchRoot(p));
         },
         empty: (q) => {
           const k = keyOf("worktree.create", ["picker:worktree"]);
@@ -548,6 +554,9 @@ function FolderPicker(): JSX.Element {
 
 // ------------------------------------------------------------- projects (C-x p)
 
+/** In a folder workspace, RET on one of its repositories activates it instead of opening it. */
+export const activatesInPlace = () => isFolderWs() && samePath(ui.container, root());
+
 function ProjectPicker(): JSX.Element {
   const src = () => ({ container: ui.container, repos: containerRepos(), recents: ui.recents });
   const searching = () => !!ui.container && containerRepos() === null;
@@ -593,8 +602,8 @@ function ProjectPicker(): JSX.Element {
                     {it.branch ?? "HEAD staccato"}
                     {it.linked ? " · worktree collegato" : ""}
                   </span>
-                  <Show when={it.path === root()}>
-                    <span class="pk-right">attuale</span>
+                  <Show when={samePath(it.path, root()) || samePath(it.path, activeRepo())}>
+                    <span class="pk-right">{samePath(it.path, root()) ? "attuale" : "attivo"}</span>
                   </Show>
                 </>
               );
@@ -622,6 +631,11 @@ function ProjectPicker(): JSX.Element {
           if (!it || it.kind === "head") return;
           if (it.kind === "action") return runCommand("folder.browse");
           closeOverlay();
+          // folder workspace: a repository of the folder becomes the active one, the workspace stays
+          if (it.kind === "repo" && activatesInPlace()) {
+            void activateRepo(it.path).then((ok) => ok && focusBottom(ui.bottomTab));
+            return;
+          }
           if (it.path === root()) return flash("È già il progetto aperto");
           void switchRoot(it.path);
         },
@@ -630,7 +644,15 @@ function ProjectPicker(): JSX.Element {
           const n = containerRepos()?.length;
           return ui.container ? `${n ?? "…"} repository · ${ui.recents.length} recenti` : `${ui.recents.length} recenti`;
         },
-        footer: () => <KeysFooter items={[["picker.next", "scorre"], ["picker.accept", "apri"], ["folder.browse", "sfoglia cartelle"], ["app.cancel", "annulla"]]} />,
+        footer: () => (
+          <KeysFooter
+            items={
+              activatesInPlace()
+                ? [["picker.next", "scorre"], ["picker.accept", "attiva"], ["project.openHere", "apri come cartella"], ["folder.browse", "sfoglia cartelle"], ["app.cancel", "annulla"]]
+                : [["picker.next", "scorre"], ["picker.accept", "apri"], ["folder.browse", "sfoglia cartelle"], ["app.cancel", "annulla"]]
+            }
+          />
+        ),
       }}
     />
   );
@@ -663,7 +685,7 @@ export function PickerOverlay(props: { kind: PickerKind }): JSX.Element {
 
 // ------------------------------------------------------------- C-h
 
-const HELP_ORDER = ["global", "editor", "tree", "history", "changes", "diff", "picker", "picker:worktree", "picker:folder", "picker:project", "settings", "help"];
+const HELP_ORDER = ["global", "editor", "tree", "history", "changes", "repos", "diff", "picker", "picker:worktree", "picker:folder", "picker:project", "settings", "help"];
 
 export function HelpOverlay(): JSX.Element {
   let box!: HTMLDivElement;

@@ -5,7 +5,8 @@ import { CONTEXT_TITLES, HINTS, KEYMAPS, MODE_NAMES, keyFor } from "../core/keym
 import { continuations } from "../lib/keys";
 import { activeBuffer, activeLanguageName } from "../state/buffers";
 import { message, ui } from "../state/ui";
-import { projectName, repo, root, status } from "../state/workspace";
+import { folderRepos } from "../state/activeRepo";
+import { activeRepo, isFolderWs, projectName, repo, repoPrefix, root, status } from "../state/workspace";
 import { FileIcon, GearIcon, GitIcon, WorktreeIcon } from "./icons";
 import { updateState } from "../state/updates";
 import { progressFraction } from "../lib/updates";
@@ -135,9 +136,11 @@ export function HintBar(): JSX.Element {
       return continuations(bindings, ui.pending, ctxs).map((c) => ({ keys: c.rest, label: getCommand(c.binding.command)?.title.toLowerCase() ?? c.binding.command }));
     }
     const out: { keys: string; label: string }[] = [];
+    const folder = isFolderWs();
     for (const h of HINTS[ctxKey()] ?? []) {
+      if (h.folderOnly && !folder) continue;
       const keys = h.cmds.map((c) => keyFor(bindings, c, ctxs)).filter((k): k is string => !!k);
-      if (keys.length) out.push({ keys: keys.join("/"), label: h.label });
+      if (keys.length) out.push({ keys: keys.join("/"), label: (folder && h.folderLabel) || h.label });
     }
     return out;
   });
@@ -203,7 +206,17 @@ export function StatusBar(): JSX.Element {
   const b = activeBuffer;
   return (
     <footer class="statusbar">
-      <Show when={repo()?.isRepo} fallback={<span>{root() ? "nessun repository git" : ""}</span>}>
+      <Show
+        when={repo()?.isRepo}
+        fallback={<span>{!root() ? "" : isFolderWs() ? (activeRepo() ? "repository…" : folderRepos()?.length ? "nessun repository attivo" : "nessun repository git") : "nessun repository git"}</span>}
+      >
+        <Show when={isFolderWs() && activeRepo()}>
+          {(a) => (
+            <button type="button" class="sb-btn sb-repo" title={a()} onClick={() => runCommand("repos.focus")}>
+              {repoPrefix() || a()}
+            </button>
+          )}
+        </Show>
         <span class="accent">{repo()?.branch ?? `HEAD staccato ${repo()?.head?.slice(0, 7) ?? ""}`}</span>
         <Show when={repo()?.upstream}>
           <span title={`rispetto a ${repo()?.upstream}`}>

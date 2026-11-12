@@ -60,7 +60,7 @@ function setWindowTitle(title: string): void {
 /**
  * After a workspace is opened (startup, folder browser, project picker, native
  * dialog). A non-repository folder becomes the container, and its repositories
- * are offered in the project picker.
+ * are listed in the repository column of the bottom panel.
  */
 export async function afterOpen(root: string, info: RepoInfo, isCurrent: () => boolean): Promise<void> {
   setWindowTitle(`${root.slice(root.lastIndexOf("/", root.length - 2) + 1).replace(/\/$/, "") || root} — ide-lite`);
@@ -71,6 +71,7 @@ export async function afterOpen(root: string, info: RepoInfo, isCurrent: () => b
   const list = await loadRepos(root, true);
   if (!isCurrent()) return;
   if (!list.length) return flash(repoScan()?.error ? `Ricerca dei repository non riuscita: ${repoScan()!.error}` : "Nessun repository git in questa cartella");
-  if (!ui.overlay) openOverlay({ kind: "picker", picker: "project" });
+  // the repository column of the bottom panel lists them: no picker
+  if (!ui.bottomVisible) setUi("bottomVisible", true);
   flash(`${list.length === 1 ? "1 repository trovato" : `${list.length} repository trovati`} in ${root}`);
 }

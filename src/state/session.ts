@@ -5,7 +5,8 @@ import { bufs, dirtyBuffers, prefetchEditor, resetBuffers, restoreBuffers } from
 import { resetChanges, resetLog } from "./git";
 import { expandedList, loadDir, resetTree, restoreExpanded } from "./tree";
 import { errorText, flash, setUi, ui, type BottomTab } from "./ui";
-import { generation, nextGeneration, refreshRepo, refreshStatus, root, setRepo, setRoot, setStatus } from "./workspace";
+import { activeRepo, generation, nextGeneration, refreshRepo, refreshStatus, root, setActiveRepo, setRepo, setRoot, setStatus, setWsInfo } from "./workspace";
+import { activateRepo, invalidateRepoDirty } from "./activeRepo";
 import { afterOpen } from "./projects";
 import { startAutoUpdates } from "./updates";
 import { loadWorktrees, resetWorktrees } from "./worktrees";
@@ -19,6 +20,8 @@ interface Session {
   bottomVisible: boolean;
   bottomHeight: number;
   bottomTab: BottomTab;
+  /** Folder workspace: the active repository. */
+  activeRepo?: string | null;
 }
 
 const key = (r: string) => `ide-lite:session:${r}`;
@@ -45,6 +48,7 @@ export function saveSession(): void {
     bottomVisible: ui.bottomVisible,
     bottomHeight: ui.bottomHeight,
     bottomTab: ui.bottomTab,
+    activeRepo: activeRepo(),
   };
   try {
     localStorage.setItem(key(r), JSON.stringify(s));
@@ -58,7 +62,7 @@ createRoot(() => {
   let t: number | undefined;
   createEffect(
     on(
-      () => [bufs.list.map((b) => b.path).join("\n"), bufs.active, expandedList().join("\n"), ui.sidebarVisible, ui.sidebarWidth, ui.bottomVisible, ui.bottomHeight, ui.bottomTab],
+      () => [bufs.list.map((b) => b.path).join("\n"), bufs.active, expandedList().join("\n"), ui.sidebarVisible, ui.sidebarWidth, ui.bottomVisible, ui.bottomHeight, ui.bottomTab, activeRepo()],
       () => {
         clearTimeout(t);
         t = window.setTimeout(saveSession, 300);
@@ -84,6 +88,8 @@ export async function openRoot(folder: string): Promise<void> {
     resetChanges();
     resetWorktrees();
     setStatus([]);
+    setActiveRepo(null);
+    setWsInfo(info);
     setRepo(info);
     setRoot(r);
   });
@@ -95,6 +101,8 @@ export async function openRoot(folder: string): Promise<void> {
     if (typeof s.bottomHeight === "number") setUi("bottomHeight", s.bottomHeight);
     if (s.bottomTab === "history" || s.bottomTab === "changes") setUi("bottomTab", s.bottomTab);
   });
+  // Folder workspace: the repository that was active last time (its git data loads on its own).
+  if (!info.isRepo && typeof s.activeRepo === "string") void activateRepo(s.activeRepo, true);
   // Startup work: the root listing and git status, in parallel.
   await Promise.all([loadDir(""), refreshStatus()]);
   if (Array.isArray(s.expanded) && s.expanded.length) restoreExpanded(s.expanded);
@@ -141,6 +149,7 @@ export function onWindowFocus(refreshTree: () => Promise<void>, extra: () => voi
   lastFocusRefresh = now;
   void refreshStatus();
   void refreshRepo();
+  invalidateRepoDirty();
   void refreshTree();
   extra();
 }

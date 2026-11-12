@@ -3,15 +3,17 @@ import { dirname } from "../lib/path";
 import { bufs, closeBuffer, currentEditor, dirtyBuffers, openFile, saveActive } from "../state/buffers";
 import {
   closeOverlay, diffHandles, focusBottom, focusEditor, focusNext, focusTree, getActiveDiff, getFolderHandle, getHelpHandle,
-  getPickerHandle, getSettingsHandle, listHandles, openOverlay, pickerQuery,
+  getPickerHandle, getRepoHandle, getSettingsHandle, focusRepos, listHandles, openOverlay, pickerQuery,
 } from "../state/focus";
 import { runUpdate } from "../state/updates";
-import { openProjectPicker } from "../state/projects";
-import { refreshChangeDiff, reloadLog, commits } from "../state/git";
+import { loadRepos, openProjectPicker } from "../state/projects";
+import { changeSel, refreshChangeDiff, reloadLog, commits } from "../state/git";
+import { invalidateRepoDirty, openWorktree } from "../state/activeRepo";
+import { toWorkspacePath } from "../lib/gitroot";
 import { switchRoot } from "../state/session";
 import { collapse, expand, isExpanded, refreshTree, selected, setSelected, toggleDir, treeRows } from "../state/tree";
 import { errorText, flash, savePrefs, setUi, ui } from "../state/ui";
-import { refreshRepo, refreshStatus, repo, root } from "../state/workspace";
+import { activeRepo, gitRoot, isFolderWs, refreshRepo, refreshStatus, repo, repoPrefix, root } from "../state/workspace";
 import { invalidateWtStatuses, loadWorktrees } from "../state/worktrees";
 import { MODE_NAMES } from "./keymaps";
 
@@ -64,6 +66,7 @@ def("focus.editor", "Vai all'editor", () => focusEditor());
 def("git.history", "Cronologia git", () => focusBottom("history"));
 def("git.changes", "Modifiche", () => focusBottom("changes"));
 def("worktree.pick", "Cerca worktree", () => {
+  if (isFolderWs() && !activeRepo()) return flash("Scegli prima un repository dalla colonna Repository");
   if (!repo()?.isRepo) return flash("La cartella aperta non è un repository git");
   void loadWorktrees();
   openOverlay({ kind: "picker", picker: "worktree" });
@@ -76,7 +79,7 @@ def("folder.open", "Apri cartella con la finestra di sistema", async () => {
 });
 def("panel.toggleBottom", "Mostra/nascondi pannello in basso", () => {
   const hide = ui.bottomVisible;
-  const inside = ["history", "changes", "diff"].includes(ui.focusCtx);
+  const inside = ["history", "changes", "diff", "repos"].includes(ui.focusCtx);
   setUi("bottomVisible", !hide);
   if (hide && inside) focusEditor();
 });
@@ -121,6 +124,7 @@ def("git.refresh", "Aggiorna stato git", () => {
   void refreshStatus().then(refreshChangeDiff);
   void refreshRepo();
   invalidateWtStatuses();
+  invalidateRepoDirty();
   if (commits().length) void reloadLog();
   flash("Stato git aggiornato");
 });
@@ -180,6 +184,35 @@ def("list.next", "Elemento successivo", () => listHandles[listCtx()]?.next(), fa
 def("list.prev", "Elemento precedente", () => listHandles[listCtx()]?.prev(), false);
 def("list.toDiff", "Vai al diff", () => listHandles[listCtx()]?.toDiff(), false);
 
+def("changes.openFile", "Apri il file modificato", () => {
+  const sel = changeSel();
+  if (!sel) return flash("Nessun file selezionato");
+  const p = toWorkspacePath(repoPrefix(), sel.path);
+  if (p === null) return flash("Il repository attivo è fuori dalla cartella aperta", true);
+  void openFile(p, { focus: true });
+}, false);
+
+// ------------------------------------------------------------- repository column (folder workspace)
+
+def("repos.next", "Repository successivo", () => getRepoHandle()?.move(1), false);
+def("repos.prev", "Repository precedente", () => getRepoHandle()?.move(-1), false);
+def("repos.pageDown", "Pagina giù", () => getRepoHandle()?.page(1), false);
+def("repos.pageUp", "Pagina su", () => getRepoHandle()?.page(-1), false);
+def("repos.activate", "Attiva il repository", () => getRepoHandle()?.activate(), false);
+def("repos.openHere", "Apri il repository come cartella di lavoro", () => getRepoHandle()?.openHere(), false);
+def("repos.focus", "Torna ai repository", () => {
+  // only meaningful in a folder workspace; a no-op in a repository workspace
+  if (!isFolderWs()) return;
+  if (!ui.bottomVisible) setUi("bottomVisible", true);
+  if (!focusRepos()) flash("Nessun repository in questa cartella");
+}, false);
+def("repos.refresh", "Cerca di nuovo i repository", () => {
+  if (!isFolderWs()) return;
+  void loadRepos(root(), true);
+  invalidateRepoDirty();
+  flash("Repository aggiornati");
+}, false);
+
 const diff = () => getActiveDiff() ?? diffHandles[ui.bottomTab];
 def("diff.nextFile", "File successivo", () => diff()?.nextFile(), false);
 def("diff.prevFile", "File precedente", () => diff()?.prevFile(), false);
@@ -202,9 +235,9 @@ def("worktree.create", "Nuovo worktree con questo nome", async () => {
   if (!name) return flash("Scrivi il nome del branch per il nuovo worktree");
   if (/\s/.test(name)) return flash("Il nome del branch non può contenere spazi", true);
   flash(`Creo il worktree ${name}…`);
-  const wt = await api.addWorktree(root(), name);
+  const wt = await api.addWorktree(gitRoot(), name);
   closeOverlay();
-  if (await switchRoot(wt.path)) flash(`Creato il worktree ${name} in ${wt.path}`);
+  if (await openWorktree(wt.path, (p) => switchRoot(p))) flash(`Creato il worktree ${name} in ${wt.path}`);
 }, false);
 def("settings.open", "Impostazioni", () => openOverlay({ kind: "settings" }));
 def("app.update", "Aggiorna ide-lite", () => runUpdate());
@@ -213,7 +246,14 @@ def("settings.prev", "Controllo precedente", () => getSettingsHandle()?.move(-1)
 def("settings.activate", "Attiva", () => getSettingsHandle()?.activate(), false);
 def("settings.pageDown", "Scorri le note giù", () => getSettingsHandle()?.scrollNotes(1), false);
 def("settings.pageUp", "Scorri le note su", () => getSettingsHandle()?.scrollNotes(-1), false);
-def("folder.enter", "Entra nella cartella", () => getFolderHandle()?.enter(), false);
+def("project.openHere", "Apri il repository come cartella di lavoro", () => {
+  const it = getPickerHandle()?.current() as { kind: string; path?: string } | undefined;
+  if (!it?.path || (it.kind !== "repo" && it.kind !== "recent")) return;
+  closeOverlay();
+  if (it.path === root()) return flash("È già il progetto aperto");
+  void switchRoot(it.path);
+}, false);
+def("folder.enter","Entra nella cartella", () => getFolderHandle()?.enter(), false);
 def("folder.up", "Cartella superiore", () => getFolderHandle()?.up(), false);
 def("folder.openHere", "Apri la cartella evidenziata", () => getFolderHandle()?.openHere(), false);
 def("help.down", "Scorri giù", () => getHelpHandle()?.scroll(40), false);

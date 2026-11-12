@@ -9,6 +9,7 @@ export const CONTEXT_TITLES: Record<string, string> = {
   tree: "File",
   history: "Cronologia",
   changes: "Modifiche",
+  repos: "Repository",
   diff: "Diff",
   picker: "Selettori",
   "picker:worktree": "Selettore worktree",
@@ -32,6 +33,7 @@ const pickerCommon = (mode: Mode): Binding[] => [
     ["ESC", "app.cancel"],
   ]),
   ...t("picker:worktree", [["M-n", "worktree.create"]]),
+  ...t("picker:project", [["C-RET", "project.openHere"]]),
   ...t("picker:folder", [
     ["TAB", "folder.enter"],
     ["<right>", "folder.enter"],
@@ -70,6 +72,26 @@ const listKeys = (ctx: string, mode: Mode): Binding[] =>
     ["<up>", "list.prev"],
     ["RET", "list.toDiff"],
     ["g", "git.refresh"],
+    // folder workspace: back to the repository column
+    ["<left>", "repos.focus"],
+    ["q", "repos.focus"],
+    ...(ctx === "changes" ? ([["o", "changes.openFile"]] as [string, string][]) : []),
+  ]);
+
+/** Repository column of the bottom panel (folder workspace). */
+const repoKeys = (mode: Mode): Binding[] =>
+  t("repos", [
+    ["n", "repos.next"],
+    ["p", "repos.prev"],
+    ...(mode === "emacs" ? ([["C-n", "repos.next"], ["C-p", "repos.prev"], ["C-v", "repos.pageDown"], ["M-v", "repos.pageUp"]] as [string, string][]) : []),
+    ["<down>", "repos.next"],
+    ["<up>", "repos.prev"],
+    ["<next>", "repos.pageDown"],
+    ["<prior>", "repos.pageUp"],
+    ["RET", "repos.activate"],
+    ["<right>", "repos.activate"],
+    ["C-RET", "repos.openHere"],
+    ["g", "repos.refresh"],
   ]);
 
 const diffKeys = (mode: Mode): Binding[] =>
@@ -148,6 +170,7 @@ const EMACS: Binding[] = [
   ]),
   ...listKeys("history", "emacs"),
   ...listKeys("changes", "emacs"),
+  ...repoKeys("emacs"),
   ...diffKeys("emacs"),
   ...pickerCommon("emacs"),
 ];
@@ -194,6 +217,7 @@ const STANDARD: Binding[] = [
   ]),
   ...listKeys("history", "standard"),
   ...listKeys("changes", "standard"),
+  ...repoKeys("standard"),
   ...diffKeys("standard"),
   ...pickerCommon("standard"),
 ];
@@ -206,9 +230,14 @@ export const MODE_NAMES: Record<Mode, string> = { emacs: "Emacs", standard: "Sta
 export interface HintSpec {
   cmds: string[];
   label: string;
+  /** Shown only in a folder workspace (multi-repository mode). */
+  folderOnly?: boolean;
+  /** Label used in a folder workspace instead of `label`. */
+  folderLabel?: string;
 }
 
 const h = (label: string, ...cmds: string[]): HintSpec => ({ cmds, label });
+const hf = (label: string, ...cmds: string[]): HintSpec => ({ cmds, label, folderOnly: true });
 
 /** Curated hints per context; keys are always looked up in the active keymap. */
 export const HINTS: Record<string, HintSpec[]> = {
@@ -234,6 +263,7 @@ export const HINTS: Record<string, HintSpec[]> = {
   history: [
     h("scorre", "list.next", "list.prev"),
     h("vai al diff", "list.toDiff"),
+    hf("repository", "repos.focus"),
     h("modifiche", "git.changes"),
     h("aggiorna", "git.refresh"),
     h("altro pannello", "focus.next"),
@@ -242,8 +272,18 @@ export const HINTS: Record<string, HintSpec[]> = {
   changes: [
     h("scorre", "list.next", "list.prev"),
     h("vai al diff", "list.toDiff"),
+    h("apri file", "changes.openFile"),
+    hf("repository", "repos.focus"),
     h("cronologia", "git.history"),
     h("aggiorna", "git.refresh"),
+    h("altro pannello", "focus.next"),
+  ],
+  repos: [
+    h("scorre", "repos.next", "repos.prev"),
+    h("attiva", "repos.activate"),
+    h("apri come cartella", "repos.openHere"),
+    h("aggiorna", "repos.refresh"),
+    h("progetto", "project.pick"),
     h("altro pannello", "focus.next"),
   ],
   diff: [
@@ -261,7 +301,12 @@ export const HINTS: Record<string, HintSpec[]> = {
     h("su", "folder.up"),
     h("apri questa", "folder.openHere"),
   ],
-  "picker:project": [h("scorre", "picker.next", "picker.prev"), h("apri", "picker.accept"), h("sfoglia cartelle", "folder.browse")],
+  "picker:project": [
+    h("scorre", "picker.next", "picker.prev"),
+    { ...h("apri", "picker.accept"), folderLabel: "attiva" },
+    hf("apri come cartella", "project.openHere"),
+    h("sfoglia cartelle", "folder.browse"),
+  ],
   help: [h("scorre", "help.down", "help.up"), h("chiudi", "app.cancel")],
   settings: [h("scorre", "settings.next", "settings.prev"), h("attiva", "settings.activate")],
   global: [

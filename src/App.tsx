@@ -10,7 +10,7 @@ import { Sidebar } from "./components/Sidebar";
 import { refreshTree } from "./state/tree";
 import { afterFirstPaint, onWindowFocus, openRoot } from "./state/session";
 import { errorText, flash, setUi, ui } from "./state/ui";
-import { repo, root } from "./state/workspace";
+import { gitRoot, repo } from "./state/workspace";
 import { ensureWtStatus, invalidateWtStatuses, needsWtStatus, worktrees } from "./state/worktrees";
 
 export default function App(): JSX.Element {
@@ -32,7 +32,7 @@ export default function App(): JSX.Element {
 
   // numbers of the current worktree against the main one (sidebar, git panel)
   createEffect(() => {
-    if (worktrees() && root() && repo()?.isRepo && needsWtStatus(root())) ensureWtStatus(root());
+    if (worktrees() && gitRoot() && repo()?.isRepo && needsWtStatus(gitRoot())) ensureWtStatus(gitRoot());
   });
 
   return (

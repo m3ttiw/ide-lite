@@ -442,6 +442,40 @@ body.resizing-h * {
   padding: 8px 14px 12px;
 }
 
+/* worktree list of the active repository: about six rows, scrolling inside */
+.wt-list {
+  flex: none;
+}
+
+.wt-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+.wt-row:hover {
+  background: #23272d;
+}
+
+.wt-row.current {
+  background: var(--sel);
+}
+
+.wt-empty {
+  padding: 6px 14px;
+}
+
+.sb-repo {
+  color: var(--text);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .wt-search {
   display: flex;
   justify-content: space-between;
@@ -670,6 +704,101 @@ body.resizing-h * {
 .bp-page {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+/* repository column (folder workspace) */
+.repo-col {
+  flex: 0 0 clamp(170px, 20%, 260px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+}
+
+.repo-head {
+  flex: none;
+  padding: 6px 12px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+
+.repo-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.repo-list .vlist {
+  flex: 1 1 auto;
+}
+
+.repo-list:focus {
+  outline: none;
+}
+
+.repo-list:focus-visible {
+  box-shadow: inset 0 0 0 1px rgba(232, 176, 74, 0.45);
+}
+
+.repo-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  padding: 0 10px 0 12px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+
+.repo-row:hover {
+  background: #23272d;
+}
+
+.repo-row.sel {
+  background: var(--sel);
+}
+
+.repo-row.active {
+  border-left-color: var(--accent);
+}
+
+.repo-row.active .repo-name {
+  color: var(--accent);
+}
+
+.repo-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.repo-name,
+.repo-branch {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repo-name {
+  font-weight: 500;
+}
+
+.repo-branch {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+.repo-dirty {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .git-split {
@@ -1340,6 +1469,14 @@ body.resizing-h * {
 
   .detail {
     flex: 1 1 auto;
+  }
+
+  .repo-col {
+    flex: 0 0 min(42%, 170px);
+  }
+
+  .repo-dirty {
+    display: none;
   }
 
   .hint:nth-of-type(n + 5):not(.right) {

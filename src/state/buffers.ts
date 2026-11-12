@@ -6,7 +6,8 @@ import { LANG_NAMES, langOf, type LangId } from "../lib/lang";
 import { basename } from "../lib/path";
 import { refreshDirOf } from "./tree";
 import { errorText, flash, setUi, ui } from "./ui";
-import { generation, refreshStatus, root } from "./workspace";
+import { toRepoPath } from "../lib/gitroot";
+import { generation, refreshStatus, repoPrefix, root } from "./workspace";
 
 export type BufferStatus = "unloaded" | "loading" | "text" | "binary" | "tooLarge" | "error";
 
@@ -178,7 +179,8 @@ export async function saveActive(): Promise<void> {
     if (g !== generation()) return;
     editor.markSaved(b.path, snap);
     flash(`Salvato ${b.path} (${b.eol.toUpperCase()})`);
-    void refreshStatus();
+    // git status only when the file lives in the active repository
+    if (toRepoPath(repoPrefix(), b.path) !== null) void refreshStatus();
     refreshDirOf(b.path);
   } catch (e) {
     flash(`Salvataggio non riuscito: ${errorText(e)}`, true);

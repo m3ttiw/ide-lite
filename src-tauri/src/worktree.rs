@@ -104,8 +104,9 @@ pub fn list_worktrees(root: &str) -> Result<Vec<Worktree>, String> {
 
 pub fn worktree_status(worktree_path: &str, base: Option<&str>) -> Result<WorktreeStatus, String> {
     let dir = root_dir(worktree_path)?;
-    // Default untracked mode (an untracked folder counts once): cheap.
-    let st = gitcmd::run_ok(&dir, Mode::Read, &["status", "--porcelain=v2", "-z"])?;
+    // Same untracked mode as `git_status`, so this number equals the length of
+    // the changes list shown for the same folder.
+    let st = gitcmd::run_ok(&dir, Mode::Read, &["status", "--porcelain=v2", "-z", "--untracked-files=all"])?;
     let dirty = parse_status_v2(&st.stdout).len() as u32;
     let (mut ahead, mut behind) = (0, 0);
     if let Some(base) = base.map(str::trim).filter(|b| !b.is_empty()) {

@@ -1,23 +1,47 @@
-import { For, Show, createEffect, createMemo, on, type JSX } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, type JSX } from "solid-js";
 import type { Commit } from "../api";
 import { runCommand } from "../core/commands";
 import { edgesBetween } from "../lib/lanes";
 import { basename, dirname } from "../lib/path";
 import { fullDate, relativeDate } from "../lib/reldate";
-import { diffHandles, listHandles, registerRegion } from "../state/focus";
+import { diffHandles, focusBottom, getRepoHandle, listHandles, registerRegion, setRepoHandle, type RepoColumnHandle } from "../state/focus";
+import { activateRepo, ensureRepoDirty, folderRepos, repoDirty, showRepoColumn } from "../state/activeRepo";
+import { switchRoot } from "../state/session";
+import { repoRows, samePath } from "../lib/gitroot";
 import {
   GROUP_TITLES, changeEntries, changeRows, changeSel, commitDiffEntries, commits, detail, laneRows, laneWidth, loadMoreLog,
   logDone, logError, logLoading, refreshChangeDiff, selectChange, selectCommit, selectedCommit, toggleCommitFile,
 } from "../state/git";
 import { setUi, ui } from "../state/ui";
-import { repo, root, status } from "../state/workspace";
+import { activeRepo, gitRoot, isFolderWs, repo, root, status } from "../state/workspace";
 import { baseRef, mainWorktree, wtStatus } from "../state/worktrees";
 import { DiffView } from "./DiffView";
 import { Kbd, LANE_COLORS, STATUS_CLASS, keyOf } from "./common";
 import { VirtualList, type VirtualListApi } from "./VirtualList";
 
-/** The workspace is not a repository: offer the project picker. */
+/** No git root: a plain folder (offer the project picker) or a folder workspace with no active repository. */
 function NotRepo(): JSX.Element {
+  return (
+    <Show
+      when={!isFolderWs() || !folderRepos()?.length || activeRepo()}
+      fallback={
+        <div class="not-repo pad">
+          <div class="muted">Scegli un repository</div>
+          <div class="muted small">
+            dalla colonna Repository<Show when={keyOf("repos.focus", ["history"])}>{(k) => <> (<Kbd>{k()}</Kbd>)</>}</Show> o con{" "}
+            <Show when={keyOf("project.pick")}>{(k) => <Kbd>{k()}</Kbd>}</Show>
+          </div>
+        </div>
+      }
+    >
+      <Show when={!(isFolderWs() && activeRepo())} fallback={<div class="muted pad">Caricamento…</div>}>
+        <PlainNotRepo />
+      </Show>
+    </Show>
+  );
+}
+
+function PlainNotRepo(): JSX.Element {
   return (
     <div class="not-repo pad">
       <div class="muted">La cartella non è un repository git.</div>
@@ -331,6 +355,116 @@ function Changes(): JSX.Element {
   );
 }
 
+// ------------------------------------------------------------- repository column (folder workspace)
+
+const REPO_ROW = 40;
+
+function RepoColumn(): JSX.Element {
+  let list: VirtualListApi | undefined;
+  const rows = createMemo(() => repoRows(root(), folderRepos() ?? [], activeRepo()));
+  const [sel, setSel] = createSignal(0);
+  const activeIndex = () => rows().findIndex((r) => r.active);
+  // the keyboard cursor starts (and lands after a switch) on the active repository
+  createEffect(
+    on(activeIndex, (i) => {
+      if (i >= 0) {
+        setSel(i);
+        list?.scrollToIndex(i);
+      }
+    }),
+  );
+  const clamp = (i: number) => Math.max(0, Math.min(rows().length - 1, i));
+  const move = (d: number) => {
+    if (!rows().length) return;
+    const i = clamp(sel() + d);
+    setSel(i);
+    list?.scrollToIndex(i);
+  };
+  const activate = async (i = sel()) => {
+    const r = rows()[i];
+    if (!r) return;
+    setSel(i);
+    if (await activateRepo(r.path)) focusBottom(ui.bottomTab);
+  };
+  const handle: RepoColumnHandle = {
+    move,
+    page: (dir) => move(dir * (list?.pageRows() ?? 8)),
+    activate: () => void activate(),
+    openHere: () => {
+      const r = rows()[sel()];
+      if (r) void switchRoot(r.path);
+    },
+  };
+  setRepoHandle(handle);
+  onCleanup(() => getRepoHandle() === handle && setRepoHandle(null));
+
+  const Row = (props: { i: number }) => {
+    const r = () => rows()[props.i];
+    return (
+      <Show when={r()}>
+        {(row) => {
+          // only rows on screen ask for their change count
+          createEffect(() => {
+            repoDirty(row().path);
+            ensureRepoDirty(row().path);
+          });
+          const dirty = () => {
+            const d = repoDirty(row().path);
+            return d === undefined || d === "loading" ? "…" : d === "error" ? "?" : d ? `${d} mod.` : "";
+          };
+          return (
+            <div
+              id={`repo-${props.i}`}
+              role="option"
+              aria-selected={sel() === props.i}
+              aria-current={row().active ? "true" : undefined}
+              class="repo-row"
+              classList={{ sel: sel() === props.i, active: row().active }}
+              title={row().path}
+              onClick={() => void activate(props.i)}
+            >
+              <span class="dot" classList={{ current: row().active }} aria-hidden="true" />
+              <span class="repo-text">
+                <span class="repo-name">{row().relPath || "."}</span>
+                <span class="repo-branch">
+                  {row().branch ?? "HEAD staccato"}
+                  <Show when={row().linked}>
+                    <span class="repo-linked" title="Worktree collegato">
+                      {" "}
+                      · worktree
+                    </span>
+                  </Show>
+                </span>
+              </span>
+              <span class="repo-dirty">{dirty()}</span>
+            </div>
+          );
+        }}
+      </Show>
+    );
+  };
+
+  return (
+    <div class="repo-col">
+      <div class="repo-head">
+        <span>Repository · {folderRepos()?.length ?? "…"}</span>
+      </div>
+      <div
+        id="repo-list"
+        class="repo-list focusable"
+        tabindex="0"
+        role="listbox"
+        aria-label="Repository"
+        aria-activedescendant={rows().length ? `repo-${sel()}` : undefined}
+        data-ctx="repos"
+        ref={(el) => registerRegion("repos", el)}
+      >
+        <VirtualList count={rows().length} rowHeight={REPO_ROW} overscan={1} row={(i) => <Row i={i} />} ref={(a) => (list = a)} />
+      </div>
+    </div>
+  );
+}
+
 // ------------------------------------------------------------- panel
 
 export function BottomPanel(): JSX.Element {
@@ -339,8 +473,9 @@ export function BottomPanel(): JSX.Element {
     if (!r?.isRepo) return "";
     const branch = r.branch ?? "HEAD staccato";
     const main = mainWorktree();
-    if (!main || main.path === root()) return branch;
-    const s = wtStatus(root());
+    const g = gitRoot();
+    if (!main || samePath(main.path, g)) return branch;
+    const s = wtStatus(g);
     if (!s || typeof s !== "object") return branch;
     const parts = [branch];
     if (s.ahead) parts.push(`↑${s.ahead}`);
@@ -371,6 +506,9 @@ export function BottomPanel(): JSX.Element {
         <span class="bp-info">{info()}</span>
       </div>
       <div class="bp-body">
+        <Show when={showRepoColumn()}>
+          <RepoColumn />
+        </Show>
         <div class="bp-page" style={{ display: ui.bottomTab === "history" ? "flex" : "none" }}>
           <History />
         </div>

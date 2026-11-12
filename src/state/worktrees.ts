@@ -1,7 +1,8 @@
 import { createSignal } from "solid-js";
 import { api, type Worktree, type WorktreeStatus } from "../api";
+import { samePath } from "../lib/gitroot";
 import { errorText, flash } from "./ui";
-import { generation, root } from "./workspace";
+import { gitGeneration as generation, gitRoot as root } from "./workspace";
 
 export const [worktrees, setWorktrees] = createSignal<Worktree[] | null>(null);
 const [loadingList, setLoadingList] = createSignal(false);
@@ -18,16 +19,17 @@ export const baseRef = () => {
   const m = mainWorktree();
   return m ? (m.branch ?? m.head) : null;
 };
-export const currentWorktree = () => worktrees()?.find((w) => w.path === root()) ?? null;
+export const currentWorktree = () => worktrees()?.find((w) => samePath(w.path, root())) ?? null;
 
-let inflight: Promise<void> | null = null;
+let inflight: { gen: number; p: Promise<void> } | null = null;
 
 export function loadWorktrees(): Promise<void> {
-  if (inflight) return inflight;
   const g = generation();
+  if (inflight && inflight.gen === g) return inflight.p;
   const r = root();
+  if (!r) return Promise.resolve();
   setLoadingList(true);
-  inflight = api
+  const p = api
     .listWorktrees(r)
     .then((list) => {
       if (g === generation()) setWorktrees(list);
@@ -39,10 +41,13 @@ export function loadWorktrees(): Promise<void> {
       }
     })
     .finally(() => {
-      inflight = null;
-      setLoadingList(false);
+      if (inflight?.p === p) {
+        inflight = null;
+        setLoadingList(false);
+      }
     });
-  return inflight;
+  inflight = { gen: g, p };
+  return p;
 }
 
 /** Numbers known to be out of date: kept on screen until the new ones arrive. */

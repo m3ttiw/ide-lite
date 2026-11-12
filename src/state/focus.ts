@@ -1,11 +1,12 @@
 import { createSignal } from "solid-js";
 import { activeBuffer, currentEditor } from "./buffers";
 import { setUi, ui, type Overlay } from "./ui";
+import { gitRoot } from "./workspace";
 
 // Focusable regions register themselves so commands can move focus.
 const regions: Record<string, HTMLElement | undefined> = {};
 
-export function registerRegion(name: "tree" | "editorPane" | "history" | "changes", el: HTMLElement): void {
+export function registerRegion(name: "tree" | "editorPane" | "history" | "changes" | "repos", el: HTMLElement): void {
   regions[name] = el;
 }
 
@@ -26,6 +27,25 @@ export interface DiffHandle {
 }
 
 export const listHandles: Partial<Record<"history" | "changes", ListHandle>> = {};
+
+/** Repository column of the bottom panel (folder workspace). */
+export interface RepoColumnHandle {
+  move(delta: number): void;
+  page(dir: 1 | -1): void;
+  activate(): void;
+  openHere(): void;
+}
+let repoHandle: RepoColumnHandle | null = null;
+export const setRepoHandle = (h: RepoColumnHandle | null) => (repoHandle = h);
+export const getRepoHandle = () => repoHandle;
+
+/** Focuses the repository column; false when it is not shown. */
+export function focusRepos(): boolean {
+  const el = regions.repos;
+  if (!el?.isConnected || el.offsetParent === null) return false;
+  el.focus();
+  return true;
+}
 export const diffHandles: Partial<Record<"history" | "changes", DiffHandle>> = {};
 let activeDiff: DiffHandle | null = null;
 export const setActiveDiff = (d: DiffHandle | null) => (activeDiff = d);
@@ -110,10 +130,18 @@ export function focusEditor(): void {
   else regions.editorPane?.focus();
 }
 
+/**
+ * In a folder workspace with no repository chosen yet, the history and
+ * changes lists are empty: the only useful place is the repository column.
+ */
+function focusReposWhenNoneActive(): boolean {
+  return !gitRoot() && focusRepos();
+}
+
 export function focusBottom(tab = ui.bottomTab): void {
   setUi("bottomVisible", true);
   setUi("bottomTab", tab);
-  focusRegion(tab);
+  if (!focusReposWhenNoneActive()) focusRegion(tab);
 }
 
 /** C-x o: sidebar -> editor -> bottom panel -> sidebar, skipping hidden ones. */
@@ -122,10 +150,10 @@ export function focusNext(): void {
   if (ui.sidebarVisible) order.push("tree");
   order.push("editor");
   if (ui.bottomVisible) order.push("bottom");
-  const cur = ui.focusCtx === "tree" ? "tree" : ui.focusCtx === "editor" ? "editor" : ["history", "changes", "diff"].includes(ui.focusCtx) ? "bottom" : null;
+  const cur = ui.focusCtx === "tree" ? "tree" : ui.focusCtx === "editor" ? "editor" : ["history", "changes", "diff", "repos"].includes(ui.focusCtx) ? "bottom" : null;
   const i = cur ? order.indexOf(cur) : -1;
   const next = order[(i + 1) % order.length];
   if (next === "tree") regions.tree?.focus();
   else if (next === "editor") focusEditor();
-  else regions[ui.bottomTab]?.focus();
+  else if (!focusReposWhenNoneActive()) regions[ui.bottomTab]?.focus();
 }

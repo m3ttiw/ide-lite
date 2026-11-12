@@ -937,8 +937,10 @@ fn worktrees_list_status_and_add() {
 
     // Ahead / behind / dirty.
     let feat_root = to_slash(&expected);
+    write(&expected, "sub/t.txt", "t\n");
     let st = worktree::worktree_status(&feat_root, Some("main")).unwrap();
-    assert_eq!((st.ahead, st.behind, st.dirty), (0, 0, 1), "untracked sub/ counts once");
+    assert_eq!((st.ahead, st.behind, st.dirty), (0, 0, 2), "each untracked file counts, as in git_status");
+    assert_eq!(st.dirty as usize, git::git_status(&feat_root).unwrap().len());
     std::fs::remove_dir_all(expected.join("sub")).unwrap();
     write(&expected, "f.txt", "f\n");
     commit_all(&expected, "feature work");

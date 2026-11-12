@@ -2,7 +2,7 @@ import { createMemo, createRoot, createSignal } from "solid-js";
 import { api, type Commit, type CommitFile, type FileDiff, type FileStatus, type StatusEntry } from "../api";
 import { LaneBuilder } from "../lib/lanes";
 import { errorText, flash } from "./ui";
-import { generation, repo, root, status } from "./workspace";
+import { gitGeneration as generation, gitRoot as root, repo, status } from "./workspace";
 
 export const PAGE = 200;
 
