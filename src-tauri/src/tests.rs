@@ -272,6 +272,19 @@ fn initial_root_prefers_existing_dir_argument() {
     assert_eq!(crate::initial_root_impl(None).unwrap(), cwd);
 }
 
+#[test]
+fn launch_folder_is_only_an_existing_dir_argument() {
+    let tmp = TempDir::new().unwrap();
+    let got = crate::launch_folder_impl(Some(tmp.path().as_os_str().to_owned()));
+    assert_eq!(got, Some(canonical_slash(tmp.path())));
+    // no argument, a missing path, a file: the app was not asked to open a folder
+    assert_eq!(crate::launch_folder_impl(None), None);
+    assert_eq!(crate::launch_folder_impl(Some(tmp.path().join("nope").into_os_string())), None);
+    let file = tmp.path().join("a.txt");
+    std::fs::write(&file, "x").unwrap();
+    assert_eq!(crate::launch_folder_impl(Some(file.into_os_string())), None);
+}
+
 // ---------------------------------------------------------------- fs
 
 #[test]

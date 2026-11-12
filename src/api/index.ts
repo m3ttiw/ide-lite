@@ -13,7 +13,7 @@ function load(): Promise<Api> {
 }
 
 const METHODS = [
-  "initialRoot", "pickFolder", "repoInfo", "listDir", "listFiles", "readFile", "writeFile",
+  "initialRoot", "launchFolder", "pickFolder", "repoInfo", "listDir", "listFiles", "readFile", "writeFile",
   "gitStatus", "gitLog", "commitFiles", "commitFileDiff", "workingFileDiff", "listWorktrees",
   "worktreeStatus", "addWorktree", "findRepos", "browseDir",
   "updateState", "updateCheck", "updateInstall", "onUpdateState",

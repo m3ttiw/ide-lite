@@ -221,6 +221,13 @@ export interface Api {
    */
   initialRoot(): Promise<string>;
 
+  /**
+   * Folder the app was asked to open: the first command-line argument when it
+   * is an existing directory (absolute, forward slashes). null when the app
+   * was started without one, e.g. from the Start menu.
+   */
+  launchFolder(): Promise<string | null>;
+
   /** Native folder picker. Resolves to null when the user cancels. */
   pickFolder(): Promise<string | null>;
 

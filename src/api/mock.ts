@@ -709,6 +709,11 @@ export const mockApi: Api = {
     return INITIAL;
   },
 
+  // The mock always starts on its demo folder, whatever was opened before.
+  async launchFolder() {
+    return INITIAL;
+  },
+
   async pickFolder() {
     const p = window.prompt(`Cartella da aprire (mock). Prova un worktree, ${PROGETTI} o una cartella qualsiasi:`, MAIN);
     return p ? norm(p) : null;

@@ -29,13 +29,16 @@ where
     tauri::async_runtime::spawn_blocking(f).await.map_err(|e| format!("task failed: {e}"))?
 }
 
-/// First CLI argument when it is an existing directory, else the current directory.
+/// First CLI argument when it is an existing directory: the folder the app was asked to open.
+fn launch_folder_impl(arg: Option<std::ffi::OsString>) -> Option<String> {
+    let p = std::path::PathBuf::from(arg?);
+    p.is_dir().then(|| paths::canonical_slash(&p))
+}
+
+/// The launch folder, else the current directory.
 fn initial_root_impl(arg: Option<std::ffi::OsString>) -> Result<String, String> {
-    if let Some(a) = arg {
-        let p = std::path::PathBuf::from(a);
-        if p.is_dir() {
-            return Ok(paths::canonical_slash(&p));
-        }
+    if let Some(p) = launch_folder_impl(arg) {
+        return Ok(p);
     }
     let cwd = std::env::current_dir().map_err(|e| format!("current directory: {e}"))?;
     Ok(paths::canonical_slash(&cwd))
@@ -44,6 +47,11 @@ fn initial_root_impl(arg: Option<std::ffi::OsString>) -> Result<String, String> 
 #[tauri::command]
 async fn initial_root() -> Result<String, String> {
     blocking(|| initial_root_impl(std::env::args_os().nth(1))).await
+}
+
+#[tauri::command]
+async fn launch_folder() -> Result<Option<String>, String> {
+    blocking(|| Ok(launch_folder_impl(std::env::args_os().nth(1)))).await
 }
 
 #[tauri::command]
@@ -192,6 +200,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             initial_root,
+            launch_folder,
             pick_folder,
             repo_info,
             list_dir,

@@ -1,6 +1,7 @@
 import { batch, createEffect, createRoot, on } from "solid-js";
 import { api } from "../api";
 import { normPath } from "../lib/path";
+import { openStartup } from "../lib/startup";
 import { bufs, dirtyBuffers, prefetchEditor, resetBuffers, restoreBuffers } from "./buffers";
 import { resetChanges, resetLog } from "./git";
 import { expandedList, loadDir, resetTree, restoreExpanded } from "./tree";
@@ -111,6 +112,14 @@ export async function openRoot(folder: string): Promise<void> {
   saveSession();
   const g = generation();
   void afterOpen(r, info, () => g === generation());
+}
+
+/**
+ * Startup: the folder given on the command line, else the last folder used
+ * that still exists, else the working directory.
+ */
+export async function openStartupFolder(): Promise<void> {
+  await openStartup({ launch: await api.launchFolder(), recents: ui.recents, fallback: () => api.initialRoot() }, openRoot);
 }
 
 /** Everything that is not needed for the first paint. */

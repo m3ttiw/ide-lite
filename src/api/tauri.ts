@@ -6,6 +6,7 @@ import type { Api, UpdateState } from "./types";
 // keys are camelCase here and arrive as snake_case parameters in Rust.
 export const tauriApi: Api = {
   initialRoot: () => invoke("initial_root"),
+  launchFolder: () => invoke("launch_folder"),
   pickFolder: () => invoke("pick_folder"),
   repoInfo: (root) => invoke("repo_info", { root }),
   listDir: (root, dir) => invoke("list_dir", { root, dir }),

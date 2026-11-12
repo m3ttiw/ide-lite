@@ -1,5 +1,4 @@
 import { Show, createEffect, onCleanup, onMount, type JSX } from "solid-js";
-import { api } from "./api";
 import { FloatingMessage, HintBar, Rail, StatusBar, TopBar } from "./components/Bars";
 import { EditorArea } from "./components/EditorArea";
 import { BottomPanel } from "./components/GitPanel";
@@ -8,7 +7,7 @@ import { Resizer } from "./components/Resizer";
 import { SettingsOverlay } from "./components/Settings";
 import { Sidebar } from "./components/Sidebar";
 import { refreshTree } from "./state/tree";
-import { afterFirstPaint, onWindowFocus, openRoot } from "./state/session";
+import { afterFirstPaint, onWindowFocus, openStartupFolder } from "./state/session";
 import { errorText, flash, setUi, ui } from "./state/ui";
 import { gitRoot, repo } from "./state/workspace";
 import { ensureWtStatus, invalidateWtStatuses, needsWtStatus, worktrees } from "./state/worktrees";
@@ -16,7 +15,7 @@ import { ensureWtStatus, invalidateWtStatuses, needsWtStatus, worktrees } from "
 export default function App(): JSX.Element {
   onMount(async () => {
     try {
-      await openRoot(await api.initialRoot());
+      await openStartupFolder();
     } catch (e) {
       flash(`Impossibile aprire la cartella iniziale: ${errorText(e)}`, true);
     }
