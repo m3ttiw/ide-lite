@@ -150,6 +150,38 @@ export interface WorktreeStatus {
   dirty: number;
 }
 
+export interface RepoEntry {
+  /** Absolute path of the repository's working tree, forward slashes. */
+  path: string;
+  /** Path relative to the folder that was searched, forward slashes. */
+  relPath: string;
+  /** Short branch name read from HEAD. null when detached or unreadable. */
+  branch: string | null;
+  /** `.git` is a file, not a directory: a linked worktree or a submodule. */
+  linked: boolean;
+}
+
+export interface FolderEntry {
+  name: string;
+  /** Absolute path, forward slashes. */
+  path: string;
+  /** The folder contains a `.git` entry (directory or file). */
+  isRepo: boolean;
+  /** Short branch name read from HEAD when isRepo. null otherwise. */
+  branch: string | null;
+}
+
+export interface FolderListing {
+  /** The folder that was listed, canonical, forward slashes. `""` for the roots listing. */
+  path: string;
+  /**
+   * Folder above this one. `""` (the roots listing) for a filesystem root
+   * such as `C:/` or `/`; null for the roots listing itself.
+   */
+  parent: string | null;
+  dirs: FolderEntry[];
+}
+
 export interface Api {
   /**
    * Folder to open at startup: the first command-line argument when it is an
@@ -220,4 +252,25 @@ export interface Api {
    * out `branch` when it exists, otherwise creates it from the HEAD of `root`.
    */
   addWorktree(root: string, branch: string): Promise<Worktree>;
+
+  /**
+   * Git repositories found INSIDE `root` (never `root` itself), for when the
+   * user opens a parent folder that holds several projects. Walks at most
+   * `maxDepth` levels below root (1 = direct children only), does not descend
+   * into a repository once it is found, skips `node_modules`, `target`,
+   * `dist`, `build`, `vendor` and dot-folders, follows no symlinks and stops
+   * at 500 results. Sorted case-insensitively by relPath. Reads the
+   * filesystem only: it never spawns git.
+   */
+  findRepos(root: string, maxDepth: number): Promise<RepoEntry[]>;
+
+  /**
+   * Sub-folders of an absolute folder, for the keyboard folder browser.
+   * `path` = `""` lists the filesystem roots: the existing drive letters on
+   * Windows (`C:/`, `D:/`…), `/` elsewhere. Folders only, sorted
+   * case-insensitively by name; `.git` is never listed, other dot-folders
+   * are. Reads the filesystem only: it never spawns git. Rejects when the
+   * folder does not exist or cannot be read.
+   */
+  browseDir(path: string): Promise<FolderListing>;
 }

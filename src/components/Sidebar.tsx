@@ -7,6 +7,7 @@ import { isExpanded, isLoading, selected, setSelected, toggleDir, treeLoaded, tr
 import { ui } from "../state/ui";
 import { dirtyDirs, repo, root, status, statusByPath } from "../state/workspace";
 import { mainWorktree, worktrees, wtStatus } from "../state/worktrees";
+import { containerRepos } from "../state/projects";
 import { Kbd, STATUS_CLASS, keyOf } from "./common";
 import { VirtualList, type VirtualListApi } from "./VirtualList";
 
@@ -129,12 +130,49 @@ function WorktreeBlock(): JSX.Element {
   );
 }
 
+/** Shown instead of the worktree block when the workspace is not a repository. */
+function RepoBlock(): JSX.Element {
+  const repos = () => (ui.container === root() ? containerRepos() : null);
+  const count = () => {
+    const r = repos();
+    return r ? String(r.length) : "…";
+  };
+  return (
+    <div class="wt-block">
+      <div class="side-head split">
+        <span>REPOSITORY · {count()}</span>
+      </div>
+      <div class="wt-current muted">
+        {repos()?.length === 0 ? "Nessun repository in questa cartella" : "La cartella non è un repository git"}
+      </div>
+      <div class="wt-btn-wrap">
+        <button type="button" class="wt-search" onClick={() => runCommand(repos()?.length === 0 ? "folder.browse" : "project.pick")}>
+          <Show
+            when={repos()?.length === 0}
+            fallback={
+              <>
+                <span>Cerca repository…</span>
+                <Show when={keyOf("project.pick")}>{(k) => <Kbd>{k()}</Kbd>}</Show>
+              </>
+            }
+          >
+            <span>Sfoglia cartelle…</span>
+            <Show when={keyOf("folder.browse")}>{(k) => <Kbd>{k()}</Kbd>}</Show>
+          </Show>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function Sidebar(): JSX.Element {
   return (
     <aside class="sidebar" aria-label="Barra laterale" style={{ width: `${ui.sidebarWidth}px` }}>
       <div class="side-head">FILE</div>
       <FileTree />
-      <WorktreeBlock />
+      <Show when={!repo() || repo()!.isRepo} fallback={<RepoBlock />}>
+        <WorktreeBlock />
+      </Show>
     </aside>
   );
 }

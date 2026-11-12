@@ -8,6 +8,7 @@ mod fsops;
 mod git;
 mod gitcmd;
 mod paths;
+mod repos;
 mod types;
 mod worktree;
 
@@ -123,6 +124,16 @@ async fn add_worktree(root: String, branch: String) -> Result<Worktree, String> 
     blocking(move || worktree::add_worktree(&root, &branch)).await
 }
 
+#[tauri::command]
+async fn find_repos(root: String, max_depth: u32) -> Result<Vec<RepoEntry>, String> {
+    blocking(move || repos::find_repos(&root, max_depth)).await
+}
+
+#[tauri::command]
+async fn browse_dir(path: String) -> Result<FolderListing, String> {
+    blocking(move || repos::browse_dir(&path)).await
+}
+
 /// The UI implements its own shortcuts (Ctrl+R, Ctrl+P, Ctrl+F, F5, ...), so
 /// WebView2's browser accelerator keys (reload, print, find, devtools, ...)
 /// are turned off. Tauri has no builder option for this; the setting is
@@ -171,6 +182,8 @@ pub fn run() {
             list_worktrees,
             worktree_status,
             add_worktree,
+            find_repos,
+            browse_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

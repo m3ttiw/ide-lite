@@ -15,7 +15,7 @@ function load(): Promise<Api> {
 const METHODS = [
   "initialRoot", "pickFolder", "repoInfo", "listDir", "listFiles", "readFile", "writeFile",
   "gitStatus", "gitLog", "commitFiles", "commitFileDiff", "workingFileDiff", "listWorktrees",
-  "worktreeStatus", "addWorktree",
+  "worktreeStatus", "addWorktree", "findRepos", "browseDir",
 ] as const satisfies readonly (keyof Api)[];
 
 type AnyFn = (...args: unknown[]) => Promise<unknown>;

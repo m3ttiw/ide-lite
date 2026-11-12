@@ -51,6 +51,8 @@ function Welcome(): JSX.Element {
   const rows: [string, string][] = [
     ["file.quickOpen", "apri un file"],
     ["palette.open", "tutti i comandi"],
+    ["project.pick", "cambia progetto"],
+    ["folder.browse", "sfoglia cartelle"],
     ["worktree.pick", "cambia worktree"],
     ["git.history", "cronologia git"],
     ["help.open", "tutte le scorciatoie"],

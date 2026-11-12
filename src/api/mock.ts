@@ -3,7 +3,7 @@
 
 import type {
   Api, Commit, CommitFile, CommitRef, DiffHunk, DiffLine, DirEntry, FileContent, FileDiff, FileStatus,
-  RepoInfo, StatusEntry, Worktree, WorktreeStatus,
+  FolderEntry, FolderListing, RepoEntry, RepoInfo, StatusEntry, Worktree, WorktreeStatus,
 } from "./types";
 import * as D from "./mockData";
 
@@ -256,8 +256,179 @@ function worktreeOf(root: string): Worktree | null {
   return best;
 }
 
+// ---------------------------------------------------------------- fake filesystem (folder browser, findRepos)
+
+interface FNode {
+  repo?: { branch: string | null; linked?: boolean; main?: string };
+  files?: string[];
+  denied?: boolean;
+}
+
+const PROGETTI = "C:/Users/dev/progetti";
+const folders = new Map<string, FNode>();
+
+function canon(p: string): string {
+  const s = p.replace(/\\/g, "/");
+  if (/^[A-Za-z]:\/*$/.test(s)) return s.slice(0, 2).toUpperCase() + "/";
+  return s.replace(/\/+$/, "") || "/";
+}
+
+function parentOf(p: string): string {
+  if (/^[A-Z]:\/$/.test(p)) return "";
+  const i = p.lastIndexOf("/");
+  const head = p.slice(0, i);
+  return /^[A-Z]:$/.test(head) ? head + "/" : head;
+}
+
+function addFolder(path: string, node: FNode = {}): void {
+  folders.set(path, { ...folders.get(path), ...node });
+  for (let p = parentOf(path); p; p = parentOf(p)) if (!folders.has(p)) folders.set(p, {});
+}
+
+addFolder("C:/Users/dev/Documenti", { files: ["lettera.md", "spese.csv"] });
+addFolder("C:/Users/dev/Scaricati", { files: ["installer.txt"] });
+addFolder("C:/Users/dev/.config/ide-lite");
+addFolder("C:/Users/dev/workspace");
+addFolder("C:/Users/Public");
+addFolder("C:/Program Files/Git");
+addFolder("C:/Windows/System32");
+addFolder("C:/System Volume Information", { denied: true });
+addFolder("D:/backup/vecchi-progetti/gestionale", { repo: { branch: "master" } });
+addFolder("D:/foto/2025");
+// a container with repositories at mixed depths (some linked worktrees, some too deep or skipped)
+addFolder(PROGETTI, { files: ["leggimi.md"] });
+addFolder(`${PROGETTI}/app-web`, { repo: { branch: "main" } });
+addFolder(`${PROGETTI}/app-web.release`, { repo: { branch: "release/2.0", linked: true, main: `${PROGETTI}/app-web` } });
+addFolder(`${PROGETTI}/api-server`, { repo: { branch: "develop" } });
+addFolder(`${PROGETTI}/appunti`, { files: ["idee.md", "riunione.txt"] });
+addFolder(`${PROGETTI}/clienti/rossi-sito`, { repo: { branch: "main" } });
+addFolder(`${PROGETTI}/clienti/bianchi-shop`, { repo: { branch: "feat/carrello" } });
+addFolder(`${PROGETTI}/clienti/archivio/vecchio-crm`, { repo: { branch: null } });
+addFolder(`${PROGETTI}/clienti/archivio/profondo/ancora/repo-troppo-profondo`, { repo: { branch: "main" } });
+addFolder(`${PROGETTI}/librerie/utils-ts`, { repo: { branch: "main" } });
+addFolder(`${PROGETTI}/librerie/utils-ts.fix-date`, { repo: { branch: "fix/date", linked: true, main: `${PROGETTI}/librerie/utils-ts` } });
+addFolder(`${PROGETTI}/node_modules/left-pad`, { repo: { branch: "main" } });
+addFolder(`${PROGETTI}/.cache/clone`, { repo: { branch: "main" } });
+addFolder(`${PROGETTI}/vuota`);
+
+const extraRepoPaths = () => [...folders].filter(([, n]) => n.repo).map(([p]) => p);
+
+/** Repository (not one of the ide-lite worktrees) that contains `p`. */
+function extraRepoOf(p: string): string | null {
+  const r = canon(p);
+  let best: string | null = null;
+  for (const rp of extraRepoPaths()) if ((r === rp || r.startsWith(rp + "/")) && (!best || rp.length > best.length)) best = rp;
+  return best;
+}
+
+const extraFs = new Map<string, Map<string, MockFile>>();
+function extraFsOf(repoPath: string): Map<string, MockFile> {
+  let fs = extraFs.get(repoPath);
+  if (!fs) {
+    const name = repoPath.slice(repoPath.lastIndexOf("/") + 1);
+    fs = new Map<string, MockFile>([
+      ["README.md", { text: `# ${name}\n\nRepository di esempio del mock.\n` }],
+      ["package.json", { text: `{\n  "name": "${name}",\n  "version": "1.0.0"\n}\n` }],
+      ["src/index.ts", { text: `export function main(): void {\n  console.log("${name}");\n}\n` }],
+      ["src/util.ts", { text: "export const somma = (a: number, b: number) => a + b;\n" }],
+      ["docs/note.md", { text: "- da fare\n" }],
+    ]);
+    extraFs.set(repoPath, fs);
+  }
+  return fs;
+}
+
+/** Direct sub-folders of an absolute folder in the fake filesystem. */
+function subfolders(abs: string): string[] {
+  const wt = worktreeOf(abs);
+  if (wt) {
+    const rel = abs === wt.path ? "" : abs.slice(wt.path.length + 1);
+    return listDir(repoFs, rel).filter((e) => e.kind === "dir").map((e) => `${wt.path}/${e.path}`);
+  }
+  const er = extraRepoOf(abs);
+  if (er && er !== abs) {
+    const rel = abs.slice(er.length + 1);
+    return listDir(extraFsOf(er), rel).filter((e) => e.kind === "dir").map((e) => `${er}/${e.path}`);
+  }
+  const out = new Set<string>();
+  for (const p of folders.keys()) if (parentOf(p) === abs) out.add(p);
+  for (const w of worktrees) if (parentOf(w.path) === abs) out.add(w.path);
+  if (er) for (const e of listDir(extraFsOf(er), "")) if (e.kind === "dir") out.add(`${er}/${e.path}`);
+  return [...out];
+}
+
+function folderExists(abs: string): boolean {
+  return folders.has(abs) || !!worktreeOf(abs) || !!extraRepoOf(abs);
+}
+
+function repoMark(abs: string): { isRepo: boolean; branch: string | null; linked: boolean } {
+  const w = worktrees.find((x) => x.path === abs);
+  if (w) return { isRepo: true, branch: w.branch, linked: !w.isMain };
+  const n = folders.get(abs);
+  if (n?.repo) return { isRepo: true, branch: n.repo.branch, linked: !!n.repo.linked };
+  return { isRepo: false, branch: null, linked: false };
+}
+
+/** Files of a plain folder of the fake filesystem, as a workspace (stops at repositories). */
+function plainTreeFs(rootAbs: string): Map<string, MockFile> {
+  const fs = new Map<string, MockFile>();
+  const walk = (abs: string, rel: string) => {
+    for (const f of folders.get(abs)?.files ?? []) fs.set(rel + f, { text: `${f}\n\nFile di esempio in ${abs}.\n` });
+    for (const sub of subfolders(abs)) {
+      const name = sub.slice(sub.lastIndexOf("/") + 1);
+      if (!repoMark(sub).isRepo && !folders.get(sub)?.denied) walk(sub, `${rel}${name}/`);
+    }
+  };
+  walk(rootAbs, "");
+  return fs;
+}
+
+function headOf(root: string): string | null {
+  const wt = worktreeOf(root);
+  if (wt) return wt.head;
+  return extraRepoOf(root) ? H.mainTip : null;
+}
+
+function extraWorktrees(root: string): Worktree[] {
+  const er = extraRepoOf(root);
+  if (!er) return [];
+  const main = folders.get(er)!.repo!.main ?? er;
+  const group = [main, ...extraRepoPaths().filter((p) => folders.get(p)!.repo!.main === main)];
+  return group.map((p) => {
+    const b = folders.get(p)!.repo!.branch;
+    return { path: p, branch: b, head: H.mainTip, isMain: p === main, isCurrent: p === er, detached: !b, locked: false, prunable: false };
+  });
+}
+
 function fsFor(root: string): Map<string, MockFile> {
-  return worktreeOf(root) ? repoFs : plainFs;
+  if (worktreeOf(root)) return repoFs;
+  const er = extraRepoOf(root);
+  if (er) return extraFsOf(er);
+  const r = canon(root);
+  if (folders.has(r)) return plainTreeFs(r);
+  return plainFs;
+}
+
+/** Plain folders of the fake filesystem list their sub-folders too, repositories included. */
+function listPlainTree(rootAbs: string, dir: string): DirEntry[] | null {
+  const abs = dir ? `${rootAbs === "/" ? "" : rootAbs.replace(/\/$/, "")}/${dir}` : rootAbs;
+  if (worktreeOf(rootAbs) || extraRepoOf(rootAbs) || !folders.has(rootAbs)) return null;
+  const inner = worktreeOf(abs) ?? null;
+  const er = extraRepoOf(abs);
+  if (inner || er) {
+    const base = inner ? inner.path : er!;
+    const rel = abs === base ? "" : abs.slice(base.length + 1);
+    const prefix = dir.slice(0, dir.length - rel.length).replace(/\/$/, "");
+    return listDir(inner ? repoFs : extraFsOf(er!), rel).map((e) => ({ ...e, path: prefix ? `${prefix}/${e.path}` : e.path, ignored: false }));
+  }
+  const cmp = (a: string, b: string) => a.toLowerCase().localeCompare(b.toLowerCase());
+  const pre = dir ? dir + "/" : "";
+  const dirs = subfolders(abs).map((p) => p.slice(p.lastIndexOf("/") + 1)).sort(cmp);
+  const files = (folders.get(abs)?.files ?? []).slice().sort(cmp);
+  return [
+    ...dirs.map((n): DirEntry => ({ name: n, path: pre + n, kind: "dir", ignored: n === "node_modules" })),
+    ...files.map((n): DirEntry => ({ name: n, path: pre + n, kind: "file", ignored: false })),
+  ];
 }
 
 // ---------------------------------------------------------------- status
@@ -458,14 +629,18 @@ export const mockApi: Api = {
   },
 
   async pickFolder() {
-    const p = window.prompt("Cartella da aprire (mock). Prova un worktree o una cartella qualsiasi:", MAIN);
+    const p = window.prompt(`Cartella da aprire (mock). Prova un worktree, ${PROGETTI} o una cartella qualsiasi:`, MAIN);
     return p ? norm(p) : null;
   },
 
   async repoInfo(root) {
     await latency();
     const wt = worktreeOf(root);
-    if (!wt) return { root: norm(root), isRepo: false, branch: null, head: null, upstream: null, ahead: 0, behind: 0 };
+    if (!wt) {
+      const er = extraRepoOf(root);
+      if (er) return { root: er, isRepo: true, branch: folders.get(er)!.repo!.branch, head: H.mainTip, upstream: null, ahead: 0, behind: 0 };
+      return { root: canon(root), isRepo: false, branch: null, head: null, upstream: null, ahead: 0, behind: 0 };
+    }
     const upstreamName = wt.branch === "main" ? "origin/main" : wt.branch === "feat/git-graph" ? "origin/feat/git-graph" : null;
     const up = upstreamName ? resolve(upstreamName) : null;
     const ab = up ? aheadBehind(wt.head, up) : { ahead: 0, behind: 0 };
@@ -475,7 +650,7 @@ export const mockApi: Api = {
 
   async listDir(root, dir) {
     await latency(5, 40);
-    return listDir(fsFor(root), dir);
+    return listPlainTree(canon(root), dir) ?? listDir(fsFor(root), dir);
   },
 
   async listFiles(root) {
@@ -511,22 +686,22 @@ export const mockApi: Api = {
 
   async gitLog(root, skip, limit, all) {
     await latency(40, 120);
-    const wt = worktreeOf(root);
-    if (!wt) return [];
+    const head = headOf(root);
+    if (!head) return [];
     let list = H.commits;
     if (!all) {
-      const anc = ancestors(wt.head);
+      const anc = ancestors(head);
       list = list.filter((c) => anc.has(c.hash));
     }
     return list.slice(skip, skip + limit).map(
-      (c): Commit => ({ hash: c.hash, parents: c.parents, subject: c.subject, author: c.author, date: c.date, isHead: c.hash === wt.head, refs: H.refs.get(c.hash) ?? [] }),
+      (c): Commit => ({ hash: c.hash, parents: c.parents, subject: c.subject, author: c.author, date: c.date, isHead: c.hash === head, refs: H.refs.get(c.hash) ?? [] }),
     );
   },
 
   async commitFiles(root, hash) {
     await latency(20, 80);
     const c = byHash.get(hash);
-    if (!worktreeOf(root) || !c) throw `Commit sconosciuto: ${hash}`;
+    if (!headOf(root) || !c) throw `Commit sconosciuto: ${hash}`;
     return commitFileList(c).map((f): CommitFile => {
       const d = commitDiff(c, f);
       let additions = 0;
@@ -539,7 +714,7 @@ export const mockApi: Api = {
   async commitFileDiff(root, hash, path) {
     await latency(30, 120);
     const c = byHash.get(hash);
-    if (!worktreeOf(root) || !c) throw `Commit sconosciuto: ${hash}`;
+    if (!headOf(root) || !c) throw `Commit sconosciuto: ${hash}`;
     const f = commitFileList(c).find((x) => x.path === path);
     if (!f) throw `File non presente nel commit: ${path}`;
     return commitDiff(c, f);
@@ -568,13 +743,14 @@ export const mockApi: Api = {
   async listWorktrees(root) {
     await latency(30, 90);
     const cur = worktreeOf(root);
-    if (!cur) return [];
+    if (!cur) return extraWorktrees(root);
     return worktrees.map((w) => ({ ...w, isCurrent: w.path === cur.path }));
   },
 
   async worktreeStatus(worktreePath, base) {
     await latency(40, 220);
     const wt = worktreeOf(worktreePath);
+    if (!wt && extraRepoOf(worktreePath)) return { ahead: 0, behind: 0, dirty: 0 };
     if (!wt) throw `Worktree sconosciuto: ${worktreePath}`;
     const b = resolve(base);
     const ab = b ? aheadBehind(wt.head, b) : { ahead: 0, behind: 0 };
@@ -582,10 +758,49 @@ export const mockApi: Api = {
     return s;
   },
 
+  async findRepos(root, maxDepth) {
+    await latency(80, 220);
+    const base = canon(root);
+    if (!folderExists(base)) throw `Cartella inesistente: ${root}`;
+    const SKIP = new Set(["node_modules", "target", "dist", "build", "vendor"]);
+    const out: RepoEntry[] = [];
+    const walk = (abs: string, depth: number) => {
+      for (const sub of subfolders(abs)) {
+        if (out.length >= 500) return;
+        const name = sub.slice(sub.lastIndexOf("/") + 1);
+        if (SKIP.has(name) || name.startsWith(".") || folders.get(sub)?.denied) continue;
+        const m = repoMark(sub);
+        if (m.isRepo) out.push({ path: sub, relPath: sub.slice(base.length).replace(/^\//, ""), branch: m.branch, linked: m.linked });
+        else if (depth < maxDepth) walk(sub, depth + 1);
+      }
+    };
+    if (!worktreeOf(base) && !extraRepoOf(base)) walk(base, 1);
+    return out.sort((a, b) => a.relPath.toLowerCase().localeCompare(b.relPath.toLowerCase()));
+  },
+
+  async browseDir(path) {
+    await latency(10, 60);
+    if (!path) {
+      const roots: FolderListing = { path: "", parent: null, dirs: ["C:/", "D:/"].map((p): FolderEntry => ({ name: p.slice(0, 2), path: p, isRepo: false, branch: null })) };
+      return roots;
+    }
+    const abs = canon(path);
+    if (!folderExists(abs)) throw `La cartella non esiste: ${abs}`;
+    if (folders.get(abs)?.denied) throw `Accesso negato: ${abs}`;
+    const dirs = subfolders(abs)
+      .map((p): FolderEntry => {
+        const m = repoMark(p);
+        return { name: p.slice(p.lastIndexOf("/") + 1), path: p, isRepo: m.isRepo, branch: m.branch };
+      })
+      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+    const listing: FolderListing = { path: abs, parent: parentOf(abs), dirs };
+    return listing;
+  },
+
   async addWorktree(root, branch) {
     await latency(150, 300);
     const cur = worktreeOf(root);
-    if (!cur) throw "Non è un repository git";
+    if (!cur) throw extraRepoOf(root) ? "Il mock crea worktree solo per ide-lite" : "Non è un repository git";
     const name = branch.trim();
     if (!name || /\s/.test(name)) throw `Nome di branch non valido: "${branch}"`;
     const path = `${PARENT}/ide-lite.${name.replace(/\//g, "-")}`;

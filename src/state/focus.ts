@@ -35,10 +35,21 @@ export interface PickerHandle {
   move(delta: number): void;
   page(dir: 1 | -1): void;
   accept(): void;
+  /** Item of the selected row. */
+  current(): unknown;
 }
 let pickerHandle: PickerHandle | null = null;
 export const setPickerHandle = (h: PickerHandle | null) => (pickerHandle = h);
 export const getPickerHandle = () => pickerHandle;
+
+export interface FolderHandle {
+  enter(): void;
+  up(): void;
+  openHere(): void;
+}
+let folderHandle: FolderHandle | null = null;
+export const setFolderHandle = (h: FolderHandle | null) => (folderHandle = h);
+export const getFolderHandle = () => folderHandle;
 
 export interface HelpHandle {
   scroll(px: number): void;

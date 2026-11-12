@@ -3,7 +3,7 @@
 
 use crate::paths::{canonical_slash, clean_rel, to_slash};
 use crate::types::*;
-use crate::{diff, fsops, git, worktree};
+use crate::{diff, fsops, git, repos, worktree};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -221,6 +221,18 @@ fn contract_json_shapes() {
         &["path", "branch", "head", "isMain", "isCurrent", "detached", "locked", "prunable"],
     );
     expect_keys(&WorktreeStatus { ahead: 0, behind: 0, dirty: 0 }, &["ahead", "behind", "dirty"]);
+
+    expect_keys(
+        &RepoEntry { path: "C:/p/r".into(), rel_path: "r".into(), branch: None, linked: true },
+        &["path", "relPath", "branch", "linked"],
+    );
+    let folder = FolderEntry { name: "r".into(), path: "C:/p/r".into(), is_repo: true, branch: Some("main".into()) };
+    expect_keys(&folder, &["name", "path", "isRepo", "branch"]);
+    let v = expect_keys(
+        &FolderListing { path: String::new(), parent: None, dirs: vec![folder] },
+        &["path", "parent", "dirs"],
+    );
+    assert!(v["parent"].is_null());
 }
 
 // ---------------------------------------------------------------- paths
@@ -955,4 +967,148 @@ fn worktrees_list_status_and_add() {
 fn worktree_folder_name() {
     let p = worktree::worktree_dir_for(Path::new("/x/my repo"), "feat/a/b").unwrap();
     assert_eq!(to_slash(&p), "/x/my repo.feat-a-b");
+}
+
+// ---------------------------------------------------------------- find_repos / browse_dir
+
+/// Workspace folder holding several repositories at different depths.
+fn repo_tree() -> (TempDir, PathBuf) {
+    let tmp = TempDir::new().unwrap();
+    let ws = tmp.path().join("ws");
+    let a = ws.join("a-repo");
+    init_repo(&a);
+    write(&a, "a.txt", "a\n");
+    commit_all(&a, "a");
+    // Repository inside a repository: never listed from above.
+    init_repo(&a.join("inner"));
+
+    let b = ws.join("Group").join("b repo ü");
+    std::fs::create_dir_all(&b).unwrap();
+    g(&b, &["init", "-q", "-b", "feature/x"]);
+
+    let c = ws.join("Group").join("deep").join("c-repo");
+    init_repo(&c);
+    write(&c, "c.txt", "c\n");
+    let hash = commit_all(&c, "c");
+    g(&c, &["checkout", "-q", "--detach", &hash]);
+
+    for skipped in ["node_modules", "target", "dist", "build", "vendor", ".hidden"] {
+        std::fs::create_dir_all(ws.join(skipped).join("r").join(".git")).unwrap();
+    }
+    std::fs::create_dir_all(ws.join("plain").join("sub")).unwrap();
+    write(&ws, "file.txt", "f");
+
+    // Linked worktree made by git (absolute gitdir).
+    g(&a, &["worktree", "add", "-q", "-b", "wt/branch", &to_slash(&ws.join("wt-linked"))]);
+    // Hand-written `.git` file with a relative gitdir.
+    write(&ws, "rel-linked/.git", "gitdir: ../a-repo/.git\n");
+    (tmp, ws)
+}
+
+#[test]
+fn find_repos_depth_skip_linked_sort_and_cap() {
+    let (_t, ws) = repo_tree();
+    let root = to_slash(&ws);
+    let rels = |depth: u32| -> Vec<String> {
+        repos::find_repos(&root, depth).unwrap().into_iter().map(|r| r.rel_path).collect()
+    };
+    assert!(rels(0).is_empty());
+    assert_eq!(rels(1), ["a-repo", "rel-linked", "wt-linked"]);
+    assert_eq!(rels(2), ["a-repo", "Group/b repo ü", "rel-linked", "wt-linked"]);
+    let all = repos::find_repos(&root, 3).unwrap();
+    assert_eq!(
+        all.iter().map(|r| r.rel_path.as_str()).collect::<Vec<_>>(),
+        ["a-repo", "Group/b repo ü", "Group/deep/c-repo", "rel-linked", "wt-linked"]
+    );
+    assert_eq!(rels(10).len(), 5);
+
+    let by = |rel: &str| all.iter().find(|r| r.rel_path == rel).unwrap();
+    assert_eq!((by("a-repo").branch.as_deref(), by("a-repo").linked), (Some("main"), false));
+    assert_eq!(by("Group/b repo ü").branch.as_deref(), Some("feature/x"), "unborn branch still named");
+    assert_eq!(by("Group/deep/c-repo").branch, None, "detached");
+    let wt = by("wt-linked");
+    assert_eq!((wt.linked, wt.branch.as_deref()), (true, Some("wt/branch")));
+    let rl = by("rel-linked");
+    assert_eq!((rl.linked, rl.branch.as_deref()), (true, Some("main")));
+    for r in &all {
+        assert!(!r.path.contains('\\') &&!r.path.starts_with("//?/"), "{}", r.path);
+        assert_eq!(r.path, format!("{}/{}", canonical_slash(&ws), r.rel_path));
+    }
+
+    // Cap (breadth-first: the shallow ones are kept).
+    let capped = repos::find_repos_capped(&root, 3, 2).unwrap();
+    assert_eq!(capped.len(), 2);
+    assert!(capped.iter().all(|r| !r.rel_path.contains('/')));
+
+    // `root` itself is a repository: not listed, repositories below it are.
+    let inside = repos::find_repos(&to_slash(&ws.join("a-repo")), 3).unwrap();
+    assert_eq!(inside.iter().map(|r| r.rel_path.as_str()).collect::<Vec<_>>(), ["inner"]);
+
+    assert!(repos::find_repos(&to_slash(&ws.join("missing")), 2).is_err());
+}
+
+#[cfg(windows)]
+#[test]
+fn find_repos_does_not_follow_junctions() {
+    let (_t, ws) = repo_tree();
+    let link = ws.join("junction");
+    let ok = Command::new("cmd")
+        .args(["/C", "mklink", "/J"])
+        .arg(&link)
+        .arg(ws.join("Group"))
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    assert!(ok, "mklink /J failed");
+    let all = repos::find_repos(&to_slash(&ws), 3).unwrap();
+    assert!(all.iter().all(|r| !r.rel_path.starts_with("junction")), "{all:?}");
+}
+
+#[test]
+fn browse_dir_lists_folders() {
+    let (tmp, ws) = repo_tree();
+    let raw = ws.to_string_lossy().replace('/', "\\") + "\\";
+    let l = repos::browse_dir(&raw).unwrap();
+    assert_eq!(l.path, canonical_slash(&ws));
+    assert_eq!(l.parent.as_deref(), Some(canonical_slash(tmp.path()).as_str()));
+    let names: Vec<&str> = l.dirs.iter().map(|d| d.name.as_str()).collect();
+    assert_eq!(
+        names,
+        [".hidden", "a-repo", "build", "dist", "Group", "node_modules", "plain", "rel-linked", "target", "vendor", "wt-linked"]
+    );
+    let a = &l.dirs[1];
+    assert_eq!((a.is_repo, a.branch.as_deref()), (true, Some("main")));
+    assert_eq!(a.path, format!("{}/a-repo", canonical_slash(&ws)));
+    let plain = l.dirs.iter().find(|d| d.name == "plain").unwrap();
+    assert_eq!((plain.is_repo, plain.branch.clone()), (false, None));
+    assert!(l.dirs.iter().find(|d| d.name == "wt-linked").unwrap().is_repo);
+
+    // `.git` is hidden; forward slashes with a trailing slash accepted.
+    let inner = repos::browse_dir(&format!("{}/a-repo/", to_slash(&ws))).unwrap();
+    assert_eq!(inner.dirs.iter().map(|d| d.name.as_str()).collect::<Vec<_>>(), ["inner"]);
+    assert_eq!(inner.parent.as_deref(), Some(canonical_slash(&ws).as_str()));
+
+    // Missing folder, a file, a relative path: rejected.
+    assert!(repos::browse_dir(&to_slash(&ws.join("missing"))).is_err());
+    assert!(repos::browse_dir(&to_slash(&ws.join("file.txt"))).is_err());
+    assert!(repos::browse_dir("relative/dir").is_err());
+}
+
+#[test]
+fn browse_dir_roots() {
+    let roots = repos::browse_dir("").unwrap();
+    assert_eq!((roots.path.as_str(), roots.parent.clone()), ("", None));
+    assert!(!roots.dirs.is_empty());
+    assert!(roots.dirs.iter().all(|d| d.path.ends_with('/') && !d.path.contains('\\')));
+
+    let tmp = TempDir::new().unwrap();
+    let fs_root = tmp.path().canonicalize().unwrap().ancestors().last().unwrap().to_path_buf();
+    let l = repos::browse_dir(&to_slash(&fs_root)).unwrap();
+    assert_eq!(l.parent.as_deref(), Some(""));
+    assert!(l.path.ends_with('/'), "{}", l.path);
+    assert!(roots.dirs.iter().any(|d| d.path == l.path), "{} in roots", l.path);
+    if cfg!(windows) {
+        let drive = &l.path[..2];
+        assert_eq!(repos::browse_dir(drive).unwrap().path, l.path, "bare drive letter");
+    }
 }

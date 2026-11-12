@@ -2,9 +2,10 @@ import { api, isTauri } from "../api";
 import { dirname } from "../lib/path";
 import { bufs, closeBuffer, currentEditor, dirtyBuffers, openFile, saveActive } from "../state/buffers";
 import {
-  closeOverlay, diffHandles, focusBottom, focusEditor, focusNext, focusTree, getActiveDiff, getHelpHandle,
+  closeOverlay, diffHandles, focusBottom, focusEditor, focusNext, focusTree, getActiveDiff, getFolderHandle, getHelpHandle,
   getPickerHandle, listHandles, openOverlay, pickerQuery,
 } from "../state/focus";
+import { openProjectPicker } from "../state/projects";
 import { refreshChangeDiff, reloadLog, commits } from "../state/git";
 import { switchRoot } from "../state/session";
 import { collapse, expand, isExpanded, refreshTree, selected, setSelected, toggleDir, treeRows } from "../state/tree";
@@ -66,7 +67,9 @@ def("worktree.pick", "Cerca worktree", () => {
   void loadWorktrees();
   openOverlay({ kind: "picker", picker: "worktree" });
 });
-def("folder.open", "Apri cartella", async () => {
+def("folder.browse", "Sfoglia cartelle", () => openOverlay({ kind: "picker", picker: "folder" }));
+def("project.pick", "Cambia progetto", () => openProjectPicker());
+def("folder.open", "Apri cartella con la finestra di sistema", async () => {
   const p = await api.pickFolder();
   if (p) await switchRoot(p);
 });
@@ -202,6 +205,9 @@ def("worktree.create", "Nuovo worktree con questo nome", async () => {
   closeOverlay();
   if (await switchRoot(wt.path)) flash(`Creato il worktree ${name} in ${wt.path}`);
 }, false);
+def("folder.enter", "Entra nella cartella", () => getFolderHandle()?.enter(), false);
+def("folder.up", "Cartella superiore", () => getFolderHandle()?.up(), false);
+def("folder.openHere", "Apri la cartella evidenziata", () => getFolderHandle()?.openHere(), false);
 def("help.down", "Scorri giù", () => getHelpHandle()?.scroll(40), false);
 def("help.up", "Scorri su", () => getHelpHandle()?.scroll(-40), false);
 def("help.pageDown", "Pagina giù", () => getHelpHandle()?.page(1), false);

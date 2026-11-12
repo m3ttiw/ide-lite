@@ -11,7 +11,12 @@ export const extname = (p: string): string => {
   return i <= 0 ? "" : b.slice(i + 1).toLowerCase();
 };
 
-export const normPath = (p: string): string => p.replace(/\\/g, "/").replace(/\/+$/, "");
+/** Forward slashes, no trailing slash, except for filesystem roots ("C:/", "/"). */
+export const normPath = (p: string): string => {
+  const s = p.replace(/\\/g, "/");
+  if (/^[A-Za-z]:\/*$/.test(s)) return s.slice(0, 2) + "/";
+  return s.replace(/\/+$/, "") || (s.startsWith("/") ? "/" : "");
+};
 
 /** Every ancestor directory of a relative path, nearest last ("a", "a/b"). */
 export function ancestors(p: string): string[] {

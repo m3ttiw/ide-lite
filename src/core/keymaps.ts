@@ -12,6 +12,8 @@ export const CONTEXT_TITLES: Record<string, string> = {
   diff: "Diff",
   picker: "Selettori",
   "picker:worktree": "Selettore worktree",
+  "picker:folder": "Sfoglia cartelle",
+  "picker:project": "Cambia progetto",
   help: "Scorciatoie",
 };
 
@@ -29,6 +31,13 @@ const pickerCommon = (mode: Mode): Binding[] => [
     ["ESC", "app.cancel"],
   ]),
   ...t("picker:worktree", [["M-n", "worktree.create"]]),
+  ...t("picker:folder", [
+    ["TAB", "folder.enter"],
+    ["<right>", "folder.enter"],
+    ["<left>", "folder.up"],
+    ...(mode === "emacs" ? ([["C-l", "folder.up"]] as [string, string][]) : []),
+    ["C-RET", "folder.openHere"],
+  ]),
   ...t("help", [
     ...(mode === "emacs" ? ([["C-n", "help.down"], ["C-p", "help.up"], ["C-v", "help.pageDown"], ["M-v", "help.pageUp"]] as [string, string][]) : []),
     ["<down>", "help.down"],
@@ -77,7 +86,8 @@ const EMACS: Binding[] = [
     ["C-x g", "git.history"],
     ["C-x m", "git.changes"],
     ["C-x w", "worktree.pick"],
-    ["C-x d", "folder.open"],
+    ["C-x d", "folder.browse"],
+    ["C-x p", "project.pick"],
     ["C-x 1", "panel.toggleBottom"],
     ["C-x C-c", "app.quit"],
     ["M-x", "palette.open"],
@@ -139,7 +149,8 @@ const STANDARD: Binding[] = [
     ["<f1>", "palette.open"],
     ["C-S-g", "git.history"],
     ["C-S-w", "worktree.pick"],
-    ["C-o", "folder.open"],
+    ["C-o", "folder.browse"],
+    ["C-r", "project.pick"],
     ["C-b", "sidebar.toggle"],
     ["C-j", "panel.toggleBottom"],
     ["<f6>", "focus.next"],
@@ -203,6 +214,8 @@ export const HINTS: Record<string, HintSpec[]> = {
     h("apri file", "file.quickOpen"),
     h("altro pannello", "focus.next"),
     h("worktree", "worktree.pick"),
+    h("progetto", "project.pick"),
+    h("cartelle", "folder.browse"),
   ],
   history: [
     h("scorre", "list.next", "list.prev"),
@@ -227,8 +240,23 @@ export const HINTS: Record<string, HintSpec[]> = {
   ],
   picker: [h("scorre", "picker.next", "picker.prev"), h("apri", "picker.accept")],
   "picker:worktree": [h("scorre", "picker.next", "picker.prev"), h("apri", "picker.accept"), h("nuovo worktree", "worktree.create")],
+  "picker:folder": [
+    h("scorre", "picker.next", "picker.prev"),
+    h("apri/entra", "picker.accept"),
+    h("entra", "folder.enter"),
+    h("su", "folder.up"),
+    h("apri questa", "folder.openHere"),
+  ],
+  "picker:project": [h("scorre", "picker.next", "picker.prev"), h("apri", "picker.accept"), h("sfoglia cartelle", "folder.browse")],
   help: [h("scorre", "help.down", "help.up"), h("chiudi", "app.cancel")],
-  global: [h("apri file", "file.quickOpen"), h("comandi", "palette.open"), h("worktree", "worktree.pick"), h("altro pannello", "focus.next")],
+  global: [
+    h("apri file", "file.quickOpen"),
+    h("comandi", "palette.open"),
+    h("progetto", "project.pick"),
+    h("cartelle", "folder.browse"),
+    h("worktree", "worktree.pick"),
+    h("altro pannello", "focus.next"),
+  ],
 };
 
 /** First binding of `command` reachable from the given contexts. */

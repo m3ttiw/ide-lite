@@ -146,6 +146,25 @@ body.resizing-h * {
   align-items: baseline;
   gap: 10px;
   min-width: 0;
+  padding: 4px 8px;
+  margin-left: -8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tb-title:hover {
+  border-color: var(--line);
+  background: var(--sel);
+}
+
+.tb-caret {
+  font-size: 10px;
+  color: var(--muted);
 }
 
 .tb-name {
@@ -1176,6 +1195,61 @@ body.resizing-h * {
 .picker-empty {
   padding: 18px 16px;
   color: var(--muted);
+}
+
+.picker-sub {
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fb-path {
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+.picker-error {
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--red);
+}
+
+.picker-row.pk-section {
+  cursor: default;
+}
+
+.pk-head {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.git-badge {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 15px;
+  color: var(--accent);
+}
+
+.not-repo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.not-repo .wt-search {
+  width: auto;
+  gap: 16px;
 }
 
 .picker-foot {

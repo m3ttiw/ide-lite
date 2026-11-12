@@ -13,8 +13,21 @@ import { setUi, ui } from "../state/ui";
 import { repo, root, status } from "../state/workspace";
 import { baseRef, mainWorktree, wtStatus } from "../state/worktrees";
 import { DiffView } from "./DiffView";
-import { LANE_COLORS, STATUS_CLASS } from "./common";
+import { Kbd, LANE_COLORS, STATUS_CLASS, keyOf } from "./common";
 import { VirtualList, type VirtualListApi } from "./VirtualList";
+
+/** The workspace is not a repository: offer the project picker. */
+function NotRepo(): JSX.Element {
+  return (
+    <div class="not-repo pad">
+      <div class="muted">La cartella non è un repository git.</div>
+      <button type="button" class="wt-search" onClick={() => runCommand("project.pick")}>
+        <span>Cerca repository…</span>
+        <Show when={keyOf("project.pick")}>{(k) => <Kbd>{k()}</Kbd>}</Show>
+      </button>
+    </div>
+  );
+}
 
 const ROW = 30;
 const LANE = 16;
@@ -201,7 +214,7 @@ function History(): JSX.Element {
         data-ctx="history"
         ref={(el) => registerRegion("history", el)}
       >
-        <Show when={repo()?.isRepo} fallback={<div class="muted pad">La cartella non è un repository git.</div>}>
+        <Show when={repo()?.isRepo} fallback={<NotRepo />}>
           <VirtualList
             count={count()}
             rowHeight={ROW}
@@ -263,7 +276,7 @@ function Changes(): JSX.Element {
         data-ctx="changes"
         ref={(el) => registerRegion("changes", el)}
       >
-        <Show when={changeRows().length} fallback={<div class="muted pad">{repo()?.isRepo ? "Nessuna modifica: l'albero di lavoro è pulito." : "La cartella non è un repository git."}</div>}>
+        <Show when={changeRows().length} fallback={repo()?.isRepo ? <div class="muted pad">Nessuna modifica: l'albero di lavoro è pulito.</div> : <NotRepo />}>
           <VirtualList
             count={changeRows().length}
             rowHeight={RH}

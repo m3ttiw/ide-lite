@@ -179,6 +179,32 @@ pub struct Worktree {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RepoEntry {
+    pub path: String,
+    pub rel_path: String,
+    pub branch: Option<String>,
+    pub linked: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderEntry {
+    pub name: String,
+    pub path: String,
+    pub is_repo: bool,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderListing {
+    pub path: String,
+    pub parent: Option<String>,
+    pub dirs: Vec<FolderEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorktreeStatus {
     pub ahead: u32,
     pub behind: u32,

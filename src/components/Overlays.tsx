@@ -1,12 +1,15 @@
-import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, type JSX } from "solid-js";
-import { api, type Worktree } from "../api";
+import { For, Show, batch, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack, type JSX } from "solid-js";
+import { api, type FolderListing, type Worktree } from "../api";
+import { defaultFolderIndex, folderAction, folderRows, parentPath, upAction, type FolderAction, type FolderResult, type FolderRow } from "../lib/folders";
+import { defaultProjectIndex, isSelectableProject, projectRows, type ProjectItem, type ProjectResult } from "../lib/projects";
+import { containerRepos } from "../state/projects";
 import { allCommands, getCommand, runCommand } from "../core/commands";
 import { activeContexts } from "../core/keyboard";
 import { CONTEXT_TITLES, KEYMAPS, MODE_NAMES, keyFor } from "../core/keymaps";
 import { fuzzyMatchPath, fuzzyMatchText, rank } from "../lib/fuzzy";
 import { basename, dirname, displayWorktreePath } from "../lib/path";
 import { activate, bufs, mruPaths, openFile } from "../state/buffers";
-import { closeOverlay, pickerQuery, setHelpHandle, setPickerHandle, setPickerQuery } from "../state/focus";
+import { closeOverlay, getFolderHandle, getPickerHandle, pickerQuery, setFolderHandle, setHelpHandle, setPickerHandle, setPickerQuery } from "../state/focus";
 import { switchRoot } from "../state/session";
 import { errorText, flash, ui, type PickerKind } from "../state/ui";
 import { generation, root } from "../state/workspace";
@@ -31,6 +34,16 @@ interface PickerSpec<T> {
   counter?: (shown: number, total: number) => string;
   onVisible?: (rows: Result<T>[]) => void;
   footer?: () => JSX.Element;
+  /** Line under the input (e.g. the folder being browsed). */
+  subtitle?: () => JSX.Element;
+  /** Error shown in the overlay without closing it. */
+  error?: () => string | null;
+  /** Rows that cannot be selected (section headers). */
+  selectable?: (item: T) => boolean;
+  rowClass?: (item: T) => string;
+  /** Row selected when the items or the filter change (default: the first). */
+  defaultIndex?: (results: Result<T>[], q: string) => number;
+  onInputKeyDown?: (e: KeyboardEvent & { currentTarget: HTMLInputElement }) => void;
 }
 
 const MAX_ROWS = 10;
@@ -45,22 +58,46 @@ function Picker<T>(props: { spec: PickerSpec<T> }): JSX.Element {
     const items = s.items();
     return items ? s.filter(pickerQuery(), items) : [];
   });
-  createEffect(on(pickerQuery, () => setSel(0), { defer: true }));
+  const ok = (i: number) => {
+    const r = results()[i];
+    return !!r && (!s.selectable || s.selectable(r.item));
+  };
+  /** Nearest selectable row from `i`, looking in direction `dir` first. */
+  const fix = (i: number, dir: number) => {
+    const n = results().length;
+    for (let k = i; k >= 0 && k < n; k += dir) if (ok(k)) return k;
+    for (let k = i; k >= 0 && k < n; k -= dir) if (ok(k)) return k;
+    return Math.max(0, Math.min(n - 1, i));
+  };
+  const select = (i: number) => {
+    setSel(i);
+    if (list) list.scrollToIndex(i);
+    else requestAnimationFrame(() => list?.scrollToIndex(i));
+  };
+  // the filter or the items changed: back to the default row
+  createEffect(
+    on([pickerQuery, () => s.items()], () => {
+      const r = untrack(results);
+      select(fix(s.defaultIndex ? s.defaultIndex(r, pickerQuery()) : 0, 1));
+    }),
+  );
   createEffect(on(results, (r) => sel() >= r.length && setSel(Math.max(0, r.length - 1)), { defer: true }));
 
   const move = (d: number) => {
     const n = results().length;
     if (!n) return;
     const i = Math.max(0, Math.min(n - 1, sel() + d));
-    setSel(i);
-    list?.scrollToIndex(i);
+    select(fix(i, d >= 0 ? 1 : -1));
   };
-  setPickerHandle({
+  const handle = {
     move,
-    page: (dir) => move(dir * (list?.pageRows() ?? MAX_ROWS)),
+    page: (dir: 1 | -1) => move(dir * (list?.pageRows() ?? MAX_ROWS)),
     accept: () => s.accept(results()[sel()], pickerQuery()),
-  });
-  onCleanup(() => setPickerHandle(null));
+    current: () => results()[sel()]?.item,
+  };
+  setPickerHandle(handle);
+  // a picker replacing another one is created before the old one is disposed
+  onCleanup(() => getPickerHandle() === handle && setPickerHandle(null));
   onMount(() => input.focus());
 
   const height = () => Math.min(results().length, MAX_ROWS) * s.rowHeight;
@@ -82,6 +119,7 @@ function Picker<T>(props: { spec: PickerSpec<T> }): JSX.Element {
             placeholder={s.placeholder}
             value={pickerQuery()}
             onInput={(e) => setPickerQuery(e.currentTarget.value)}
+            onKeyDown={(e) => s.onInputKeyDown?.(e)}
             role="combobox"
             aria-expanded="true"
             aria-controls="picker-list"
@@ -89,6 +127,16 @@ function Picker<T>(props: { spec: PickerSpec<T> }): JSX.Element {
           />
           <span class="picker-count">{s.items() === null ? "…" : (s.counter?.(results().length, total()) ?? `${results().length} di ${total()}`)}</span>
         </div>
+        <Show when={s.subtitle}>
+          <div class="picker-sub">{s.subtitle!()}</div>
+        </Show>
+        <Show when={s.error?.()}>
+          {(err) => (
+            <div class="picker-error" role="alert">
+              {err()}
+            </div>
+          )}
+        </Show>
         <Show when={s.items() !== null} fallback={<div class="picker-empty">Caricamento…</div>}>
           <Show when={results().length} fallback={<div class="picker-empty">{s.empty(pickerQuery())}</div>}>
             <div id="picker-list" role="listbox" aria-label={s.title}>
@@ -103,12 +151,12 @@ function Picker<T>(props: { spec: PickerSpec<T> }): JSX.Element {
                     {(r) => (
                       <div
                         id={`picker-row-${i}`}
-                        role="option"
+                        role={!s.selectable || s.selectable(r().item) ? "option" : "presentation"}
                         aria-selected={sel() === i}
-                        class="picker-row"
+                        class={`picker-row ${s.rowClass?.(r().item) ?? ""}`}
                         classList={{ sel: sel() === i }}
-                        onMouseMove={() => sel() !== i && setSel(i)}
-                        onClick={() => s.accept(r(), pickerQuery())}
+                        onMouseMove={() => sel() !== i && ok(i) && setSel(i)}
+                        onClick={() => ok(i) && s.accept(r(), pickerQuery())}
                       >
                         {s.render(r(), () => sel() === i)}
                       </div>
@@ -362,9 +410,241 @@ function WorktreePicker(): JSX.Element {
   );
 }
 
+// ------------------------------------------------------------- folder browser (C-x d)
+
+function FolderPicker(): JSX.Element {
+  const [listing, setListing] = createSignal<FolderListing | null>(null);
+  const [highlight, setHighlight] = createSignal<string | null>(null);
+  const [error, setError] = createSignal<string | null>(null);
+  const [loading, setLoading] = createSignal(false);
+  let seq = 0;
+
+  const go = (path: string, hl?: string | null) => {
+    const n = ++seq;
+    setLoading(true);
+    api
+      .browseDir(path)
+      .then((l) => {
+        if (n !== seq) return;
+        batch(() => {
+          setPickerQuery("");
+          setError(null);
+          setHighlight(hl ?? null);
+          setListing(l);
+        });
+      })
+      .catch((e) => {
+        if (n !== seq) return;
+        setError(`${path || "Radici"}: ${errorText(e)}`);
+        if (!listing()) go("", path); // nothing on screen yet: start from the roots
+      })
+      .finally(() => n === seq && setLoading(false));
+  };
+
+  const open = (path: string) => {
+    closeOverlay();
+    if (path === root()) return flash("È già la cartella aperta");
+    void switchRoot(path);
+  };
+  const act = (a: FolderAction) => {
+    if (!a) return;
+    if (a.type === "enter") go(a.path, a.highlight);
+    else open(a.path);
+  };
+  const cur = () => getPickerHandle()?.current() as FolderRow | undefined;
+  const up = () => {
+    const l = listing();
+    if (l) act(upAction(l));
+  };
+  const fh = {
+    enter: () => act(folderAction(cur(), "enter")),
+    up,
+    openHere: () => act(folderAction(cur(), "open")),
+  };
+  setFolderHandle(fh);
+  onCleanup(() => getFolderHandle() === fh && setFolderHandle(null));
+  // an error stays until the next navigation or the next edit of the filter
+  createEffect(on(pickerQuery, () => setError(null), { defer: true }));
+
+  // starts in the parent of the workspace, with the workspace highlighted
+  const r = root();
+  go(r ? parentPath(r) : "", r || null);
+
+  const items = createMemo((): FolderRow[] | null => {
+    const l = listing();
+    return l ? folderRows(l, "").map((x) => x.item) : null;
+  });
+
+  return (
+    <Picker<FolderRow>
+      spec={{
+        title: "Sfoglia cartelle",
+        placeholder: "filtra le cartelle…",
+        rowHeight: 30,
+        items,
+        filter: (q) => (listing() ? folderRows(listing()!, q) : []),
+        defaultIndex: (res, q) => defaultFolderIndex(res as FolderResult[], q ? null : highlight()),
+        subtitle: () => (
+          <span class="fb-path" title={listing()?.path}>
+            {listing() ? listing()!.path || "Unità disponibili" : "…"}
+            <Show when={loading()}>
+              <span class="muted"> · caricamento…</span>
+            </Show>
+          </span>
+        ),
+        error,
+        render: (res) => {
+          const it = res.item;
+          if (it.kind === "self")
+            return (
+              <>
+                <span class="pk-name">./</span>
+                <span class="pk-dir">apri questa cartella</span>
+              </>
+            );
+          return (
+            <>
+              <span class="pk-name">
+                <Highlight text={it.entry.name} positions={res.positions} />
+                {"/"}
+              </span>
+              <Show when={it.entry.isRepo}>
+                <span class="git-badge">git</span>
+                <span class="pk-dir">{it.entry.branch ?? "HEAD staccato"}</span>
+              </Show>
+              <Show when={it.entry.path === root()}>
+                <span class="pk-right">attuale</span>
+              </Show>
+            </>
+          );
+        },
+        accept: (res) => act(folderAction(res?.item, "accept")),
+        onInputKeyDown: (e) => {
+          if (e.key === "Backspace" && !e.ctrlKey && !e.altKey && e.currentTarget.value === "") {
+            e.preventDefault();
+            up();
+          }
+        },
+        empty: (q) => (q ? `Nessuna cartella corrisponde a “${q}”.` : "Nessuna sottocartella."),
+        counter: () => {
+          const l = listing();
+          return l ? `${l.dirs.length} cartelle` : "…";
+        },
+        footer: () => (
+          <KeysFooter
+            items={[
+              ["picker.accept", "apri/entra"],
+              ["folder.enter", "entra"],
+              ["folder.up", "su"],
+              ["folder.openHere", "apri questa"],
+              ["app.cancel", "chiudi"],
+            ]}
+          />
+        ),
+      }}
+    />
+  );
+}
+
+// ------------------------------------------------------------- projects (C-x p)
+
+function ProjectPicker(): JSX.Element {
+  const src = () => ({ container: ui.container, repos: containerRepos(), recents: ui.recents });
+  const searching = () => !!ui.container && containerRepos() === null;
+  const withSearching = (rows: ProjectResult[]): ProjectResult[] =>
+    searching() ? [{ item: { kind: "head", label: `Repository in ${ui.container} · ricerca…` }, positions: [] }, ...rows] : rows;
+  const items = createMemo(() => withSearching(projectRows(src(), "")).map((r) => r.item));
+  return (
+    <Picker<ProjectItem>
+      spec={{
+        title: "Cambia progetto",
+        placeholder: "repository o cartella recente…",
+        rowHeight: 30,
+        items,
+        filter: (q) => withSearching(projectRows(src(), q)),
+        selectable: isSelectableProject,
+        rowClass: (it) => (it.kind === "head" ? "pk-section" : ""),
+        defaultIndex: (res, q) => defaultProjectIndex(res as ProjectResult[], q, root()),
+        render: (res) => {
+          const it = res.item;
+          switch (it.kind) {
+            case "head":
+              return <span class="pk-head">{it.label}</span>;
+            case "action":
+              return (
+                <>
+                  <span class="pk-name">Sfoglia cartelle…</span>
+                  <Show when={keyOf("folder.browse")}>
+                    {(k) => (
+                      <span class="pk-right">
+                        <Kbd>{k()}</Kbd>
+                      </span>
+                    )}
+                  </Show>
+                </>
+              );
+            case "repo":
+              return (
+                <>
+                  <span class="pk-name">
+                    <Highlight text={it.label} positions={res.positions} />
+                  </span>
+                  <span class="pk-dir">
+                    {it.branch ?? "HEAD staccato"}
+                    {it.linked ? " · worktree collegato" : ""}
+                  </span>
+                  <Show when={it.path === root()}>
+                    <span class="pk-right">attuale</span>
+                  </Show>
+                </>
+              );
+            case "recent": {
+              const name = basename(it.path) || it.path;
+              const dir = dirname(it.path);
+              return (
+                <>
+                  <span class="pk-name">
+                    <Highlight text={name} positions={res.positions} offset={it.path.length - name.length} />
+                  </span>
+                  <span class="pk-dir">
+                    <Highlight text={dir} positions={res.positions.filter((p) => p < dir.length)} />
+                  </span>
+                  <Show when={it.path === root()}>
+                    <span class="pk-right">attuale</span>
+                  </Show>
+                </>
+              );
+            }
+          }
+        },
+        accept: (res) => {
+          const it = res?.item;
+          if (!it || it.kind === "head") return;
+          if (it.kind === "action") return runCommand("folder.browse");
+          closeOverlay();
+          if (it.path === root()) return flash("È già il progetto aperto");
+          void switchRoot(it.path);
+        },
+        empty: () => "Nessun progetto corrisponde.",
+        counter: () => {
+          const n = containerRepos()?.length;
+          return ui.container ? `${n ?? "…"} repository · ${ui.recents.length} recenti` : `${ui.recents.length} recenti`;
+        },
+        footer: () => <KeysFooter items={[["picker.next", "scorre"], ["picker.accept", "apri"], ["folder.browse", "sfoglia cartelle"], ["app.cancel", "annulla"]]} />,
+      }}
+    />
+  );
+}
+
 export function PickerOverlay(props: { kind: PickerKind }): JSX.Element {
   return (
     <>
+      <Show when={props.kind === "folder"}>
+        <FolderPicker />
+      </Show>
+      <Show when={props.kind === "project"}>
+        <ProjectPicker />
+      </Show>
       <Show when={props.kind === "file"}>
         <FilePicker />
       </Show>
@@ -383,7 +663,7 @@ export function PickerOverlay(props: { kind: PickerKind }): JSX.Element {
 
 // ------------------------------------------------------------- C-h
 
-const HELP_ORDER = ["global", "editor", "tree", "history", "changes", "diff", "picker", "picker:worktree", "help"];
+const HELP_ORDER = ["global", "editor", "tree", "history", "changes", "diff", "picker", "picker:worktree", "picker:folder", "picker:project", "help"];
 
 export function HelpOverlay(): JSX.Element {
   let box!: HTMLDivElement;

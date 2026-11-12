@@ -14,12 +14,19 @@ import { Kbd, keyOf } from "./common";
 export function TopBar(): JSX.Element {
   return (
     <header class="topbar">
-      <div class="tb-title">
+      <button
+        type="button"
+        class="tb-title"
+        aria-label="Cambia progetto"
+        title={`Cambia progetto${keyOf("project.pick") ? ` (${keyOf("project.pick")})` : ""}`}
+        onClick={() => runCommand("project.pick")}
+      >
         <span class="tb-name">{projectName() || "ide-lite"}</span>
-        <span class="tb-path" title={root()}>
-          {root()}
+        <span class="tb-path">{root()}</span>
+        <span class="tb-caret" aria-hidden="true">
+          ▾
         </span>
-      </div>
+      </button>
       <label class="tb-open">
         <span>Apri file</span>
         <input
@@ -88,6 +95,8 @@ const PICKER_TITLES: Record<string, string> = {
   buffer: "Cambia buffer",
   command: "Comandi",
   worktree: "Selettore worktree",
+  folder: "Sfoglia cartelle",
+  project: "Cambia progetto",
 };
 
 export function HintBar(): JSX.Element {

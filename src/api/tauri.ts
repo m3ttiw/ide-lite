@@ -19,4 +19,6 @@ export const tauriApi: Api = {
   listWorktrees: (root) => invoke("list_worktrees", { root }),
   worktreeStatus: (worktreePath, base) => invoke("worktree_status", { worktreePath, base }),
   addWorktree: (root, branch) => invoke("add_worktree", { root, branch }),
+  findRepos: (root, maxDepth) => invoke("find_repos", { root, maxDepth }),
+  browseDir: (path) => invoke("browse_dir", { path }),
 };

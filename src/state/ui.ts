@@ -2,18 +2,32 @@ import { createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import type { Mode } from "../core/keymaps";
 
-export type PickerKind = "file" | "buffer" | "command" | "worktree";
+export type PickerKind = "file" | "buffer" | "command" | "worktree" | "folder" | "project";
 export type Overlay = null | { kind: "picker"; picker: PickerKind } | { kind: "help" };
 export type BottomTab = "history" | "changes";
 
 const GLOBAL_KEY = "ide-lite:prefs";
 
-function loadPrefs(): { mode: Mode; hintsVisible: boolean } {
+interface Prefs {
+  mode: Mode;
+  hintsVisible: boolean;
+  /** Last non-repository folder opened: the project picker lists the repositories inside it. */
+  container: string | null;
+  /** Workspace roots opened, most recent first. */
+  recents: string[];
+}
+
+function loadPrefs(): Prefs {
   try {
     const p = JSON.parse(localStorage.getItem(GLOBAL_KEY) ?? "{}");
-    return { mode: p.mode === "standard" ? "standard" : "emacs", hintsVisible: p.hintsVisible !== false };
+    return {
+      mode: p.mode === "standard" ? "standard" : "emacs",
+      hintsVisible: p.hintsVisible !== false,
+      container: typeof p.container === "string" && p.container ? p.container : null,
+      recents: Array.isArray(p.recents) ? p.recents.filter((x: unknown) => typeof x === "string") : [],
+    };
   } catch {
-    return { mode: "emacs", hintsVisible: true };
+    return { mode: "emacs", hintsVisible: true, container: null, recents: [] };
   }
 }
 
@@ -22,6 +36,8 @@ const prefs = loadPrefs();
 export const [ui, setUi] = createStore({
   mode: prefs.mode as Mode,
   hintsVisible: prefs.hintsVisible,
+  container: prefs.container,
+  recents: prefs.recents,
   sidebarVisible: true,
   sidebarWidth: 260,
   bottomVisible: true,
@@ -37,7 +53,7 @@ export const [ui, setUi] = createStore({
 
 export function savePrefs(): void {
   try {
-    localStorage.setItem(GLOBAL_KEY, JSON.stringify({ mode: ui.mode, hintsVisible: ui.hintsVisible }));
+    localStorage.setItem(GLOBAL_KEY, JSON.stringify({ mode: ui.mode, hintsVisible: ui.hintsVisible, container: ui.container, recents: ui.recents }));
   } catch {
     /* storage unavailable */
   }

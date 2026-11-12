@@ -5,7 +5,8 @@ import { bufs, dirtyBuffers, prefetchEditor, resetBuffers, restoreBuffers } from
 import { resetChanges, resetLog } from "./git";
 import { expandedList, loadDir, resetTree, restoreExpanded } from "./tree";
 import { errorText, flash, setUi, ui, type BottomTab } from "./ui";
-import { nextGeneration, refreshRepo, refreshStatus, root, setRepo, setRoot, setStatus } from "./workspace";
+import { generation, nextGeneration, refreshRepo, refreshStatus, root, setRepo, setRoot, setStatus } from "./workspace";
+import { afterOpen } from "./projects";
 import { loadWorktrees, resetWorktrees } from "./worktrees";
 
 interface Session {
@@ -93,13 +94,14 @@ export async function openRoot(folder: string): Promise<void> {
     if (typeof s.bottomHeight === "number") setUi("bottomHeight", s.bottomHeight);
     if (s.bottomTab === "history" || s.bottomTab === "changes") setUi("bottomTab", s.bottomTab);
   });
-  document.title = `${r.slice(r.lastIndexOf("/") + 1)} — ide-lite`;
   // Startup work: the root listing and git status, in parallel.
   await Promise.all([loadDir(""), refreshStatus()]);
   if (Array.isArray(s.expanded) && s.expanded.length) restoreExpanded(s.expanded);
   if (Array.isArray(s.buffers) && s.buffers.length) restoreBuffers(s.buffers, s.active ?? null);
   restoring = false;
   saveSession();
+  const g = generation();
+  void afterOpen(r, info, () => g === generation());
 }
 
 /** Everything that is not needed for the first paint. */
