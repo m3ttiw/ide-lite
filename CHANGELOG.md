@@ -1,3 +1,10 @@
+# [0.4.0](https://github.com/m3ttiw/ide-lite/compare/v0.3.0...v0.4.0) (2026-11-14)
+
+
+### Features
+
+* all'avvio riapre l'ultima cartella usata ([becf7bb](https://github.com/m3ttiw/ide-lite/commit/becf7bb15671d0a9cab9fe0ca1a5153c4bb008ff))
+
 # [0.3.0](https://github.com/m3ttiw/ide-lite/compare/v0.2.0...v0.3.0) (2026-11-12)
 
 
