@@ -34,7 +34,7 @@ export function TopBar(): JSX.Element {
         <span>Apri file</span>
         <input
           type="search"
-          placeholder="nome o percorso…"
+          placeholder="nome, percorso o *.ts…"
           data-no-return=""
           onFocus={() => runCommand("file.quickOpen")}
           onMouseDown={(e) => {

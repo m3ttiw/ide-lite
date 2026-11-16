@@ -6,7 +6,8 @@ import { containerRepos } from "../state/projects";
 import { allCommands, getCommand, runCommand } from "../core/commands";
 import { activeContexts } from "../core/keyboard";
 import { CONTEXT_TITLES, KEYMAPS, MODE_NAMES, keyFor } from "../core/keymaps";
-import { fuzzyMatchPath, fuzzyMatchText, rank } from "../lib/fuzzy";
+import { fuzzyMatchText, rank } from "../lib/fuzzy";
+import { hasWildcards, matchPathQuery } from "../lib/glob";
 import { basename, dirname, displayWorktreePath } from "../lib/path";
 import { activate, bufs, mruPaths, openFile } from "../state/buffers";
 import { closeOverlay, focusBottom, getFolderHandle, getPickerHandle, pickerQuery, setFolderHandle, setHelpHandle, setPickerHandle, setPickerQuery } from "../state/focus";
@@ -221,10 +222,10 @@ function FilePicker(): JSX.Element {
     <Picker
       spec={{
         title: "Apri file",
-        placeholder: "nome o percorso…",
+        placeholder: "nome, percorso o *.ts…",
         rowHeight: 30,
         items: files,
-        filter: (q, items) => rank(q, items, (p) => p, fuzzyMatchPath).map((x) => ({ item: x.item, positions: x.match.positions })),
+        filter: (q, items) => rank(q, items, (p) => p, matchPathQuery).map((x) => ({ item: x.item, positions: x.match.positions })),
         render: (res) => {
           const name = basename(res.item);
           const dir = dirname(res.item);
@@ -245,7 +246,7 @@ function FilePicker(): JSX.Element {
           closeOverlay();
           void openFile(res.item, { focus: true });
         },
-        empty: (q) => (q ? `Nessun file corrisponde a “${q}”.` : "Nessun file."),
+        empty: (q) => (!q ? "Nessun file." : hasWildcards(q) ? `Nessun file corrisponde allo schema “${q.trim()}”.` : `Nessun file corrisponde a “${q}”.`),
         counter: (n, t) => `${n} di ${t}`,
         footer: () => <KeysFooter items={[["picker.next", "scorre"], ["picker.accept", "apri"], ["app.cancel", "annulla"]]} />,
       }}
@@ -269,7 +270,7 @@ function BufferPicker(): JSX.Element {
         placeholder: "nome del buffer…",
         rowHeight: 30,
         items: order,
-        filter: (q, items) => rank(q, items, (p) => p, fuzzyMatchPath).map((x) => ({ item: x.item, positions: x.match.positions })),
+        filter: (q, items) => rank(q, items, (p) => p, matchPathQuery).map((x) => ({ item: x.item, positions: x.match.positions })),
         render: (res) => {
           const b = () => bufs.list.find((x) => x.path === res.item);
           const name = basename(res.item);

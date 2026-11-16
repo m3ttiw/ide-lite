@@ -21,7 +21,7 @@ Notazione Emacs: `C-` è Ctrl, `M-` è Alt. La modalità "Standard" (Ctrl+P, Ctr
 
 | Tasti | Azione |
 |---|---|
-| `C-x C-f` | Apri file (ricerca fuzzy) |
+| `C-x C-f` | Apri file (ricerca fuzzy, o per schema con `*` e `?`) |
 | `C-x C-s` | Salva |
 | `C-x b` / `C-x k` | Cambia / chiudi buffer |
 | `C-x o` | Pannello successivo |
@@ -31,6 +31,8 @@ Notazione Emacs: `C-` è Ctrl, `M-` è Alt. La modalità "Standard" (Ctrl+P, Ctr
 | `M-x` | Tutti i comandi |
 | `C-h` | Tutte le scorciatoie |
 | `C-g` | Annulla |
+
+In Apri file una ricerca con `*` o `?` è uno schema sul nome intero del file: `communications*.ts` trova i file il cui nome inizia per "communications" e finisce per ".ts". `*` non attraversa le cartelle, `**` sì; con una `/` lo schema vale per il percorso (`api/*.ts`, `src/**/*.test.ts`) e una `/` iniziale lo lega alla radice.
 
 ## Sviluppo
 
