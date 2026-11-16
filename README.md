@@ -67,3 +67,4 @@ cargo test --manifest-path src-tauri/Cargo.toml   # backend, su repository git c
 - `src/api/types.ts` — contratto tra interfaccia e backend: le 15 chiamate e i loro tipi.
 - `src-tauri/src/` — comandi Rust; git è usato tramite l'eseguibile di sistema.
 - `src/` — interfaccia: `core/` (comandi e tasti), `state/`, `components/`, `editor/` (CodeMirror, caricato dopo il primo disegno).
+- `public/icon.svg` — il logo ("IL", ide lite). Le icone in `src-tauri/icons` si rigenerano da lì con `npx tauri icon public/icon.svg` (poi si tengono solo i file già presenti, niente `android/` e `ios/`).
