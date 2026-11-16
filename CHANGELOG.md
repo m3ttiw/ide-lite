@@ -1,3 +1,11 @@
+# [0.7.0](https://github.com/m3ttiw/ide-lite/compare/v0.6.0...v0.7.0) (2026-11-16)
+
+
+### Features
+
+* al primo avvio apre la cartella home ([5d43cd0](https://github.com/m3ttiw/ide-lite/commit/5d43cd04fb61dce946e07c153ecf15bd717f6bdc))
+* elimina uno o più worktree dal selettore ([9e47a1f](https://github.com/m3ttiw/ide-lite/commit/9e47a1f6d3ee9294fb2ca3e24ad0e73a51bdfd86))
+
 # [0.6.0](https://github.com/m3ttiw/ide-lite/compare/v0.5.0...v0.6.0) (2026-11-16)
 
 
