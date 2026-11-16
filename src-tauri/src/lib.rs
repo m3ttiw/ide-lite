@@ -144,6 +144,11 @@ async fn add_worktree(root: String, branch: String) -> Result<Worktree, String> 
 }
 
 #[tauri::command]
+async fn remove_worktree(root: String, path: String, force: bool) -> Result<(), String> {
+    blocking(move || worktree::remove_worktree(&root, &path, force)).await
+}
+
+#[tauri::command]
 async fn find_repos(root: String, max_depth: u32) -> Result<Vec<RepoEntry>, String> {
     blocking(move || repos::find_repos(&root, max_depth)).await
 }
@@ -224,6 +229,7 @@ pub fn run() {
             list_worktrees,
             worktree_status,
             add_worktree,
+            remove_worktree,
             find_repos,
             browse_dir,
             update_state,

@@ -10,7 +10,7 @@ Tauri 2 (backend Rust) + Solid + CodeMirror 6. L'eseguibile pesa circa 5 MB.
 - **Editor**: schede, salvataggio che conserva il fine riga del file, sintassi colorata (Rust, JS/TS, JSON, Markdown, HTML, CSS, Python, TOML, YAML).
 - **Cronologia**: grafo dei commit con rami e merge, file cambiati e diff per ogni commit.
 - **Modifiche**: file in stage, non in stage e non tracciati, ognuno con il suo diff.
-- **Worktree**: selettore con ricerca per branch o cartella, cambio rapido, creazione di un nuovo worktree.
+- **Worktree**: selettore con ricerca per branch o cartella, cambio rapido, creazione di un nuovo worktree, eliminazione di uno o più worktree con conferma.
 - **Suggerimenti**: la barra in basso mostra le scorciatoie valide nel pannello attivo; dopo un prefisso come `C-x` elenca tutte le continuazioni.
 
 Non ci sono ancora la ricerca nel progetto e l'aggiornamento automatico quando i file cambiano su disco (l'albero si aggiorna al ritorno sulla finestra e dopo un salvataggio).
@@ -33,6 +33,8 @@ Notazione Emacs: `C-` è Ctrl, `M-` è Alt. La modalità "Standard" (Ctrl+P, Ctr
 | `C-g` | Annulla |
 
 In Apri file una ricerca con `*` o `?` è uno schema sul nome intero del file: `communications*.ts` trova i file il cui nome inizia per "communications" e finisce per ".ts". `*` non attraversa le cartelle, `**` sì; con una `/` lo schema vale per il percorso (`api/*.ts`, `src/**/*.test.ts`) e una `/` iniziale lo lega alla radice.
+
+Nel selettore dei worktree (`C-x w`) `C-<down>` e `C-<up>` selezionano mentre scorrono, `C-SPC` seleziona o deseleziona la riga corrente e `C-<delete>` elimina i selezionati, o la riga corrente se non ce ne sono. Una finestra elenca cosa verrà cancellato, con un avviso per i worktree che hanno file modificati o nuovi; si conferma con `C-RET` (`RET` da solo non basta) e si annulla con `ESC` o `C-g`. Le cartelle spariscono dal disco, i branch restano. Il worktree principale e quello aperto non si possono eliminare.
 
 ## Sviluppo
 

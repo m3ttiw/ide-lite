@@ -15,6 +15,7 @@ export const CONTEXT_TITLES: Record<string, string> = {
   "picker:worktree": "Selettore worktree",
   "picker:folder": "Sfoglia cartelle",
   "picker:project": "Cambia progetto",
+  confirm: "Conferma",
   settings: "Impostazioni",
   help: "Scorciatoie",
 };
@@ -32,7 +33,20 @@ const pickerCommon = (mode: Mode): Binding[] => [
     ["RET", "picker.accept"],
     ["ESC", "app.cancel"],
   ]),
-  ...t("picker:worktree", [["M-n", "worktree.create"]]),
+  ...t("picker:worktree", [
+    ["M-n", "worktree.create"],
+    ["C-<down>", "worktree.markNext"],
+    ["C-<up>", "worktree.markPrev"],
+    ["C-SPC", "worktree.toggleMark"],
+    ["C-<delete>", "worktree.delete"],
+    ...(mode === "emacs" ? ([["C-k", "worktree.delete"]] as [string, string][]) : []),
+  ]),
+  // confirmation dialog: only these keys work while it is open
+  ...t("confirm", [
+    ["C-RET", "confirm.accept"],
+    ["ESC", "app.cancel"],
+    ["C-g", "app.cancel"],
+  ]),
   ...t("picker:project", [["C-RET", "project.openHere"]]),
   ...t("picker:folder", [
     ["TAB", "folder.enter"],
@@ -293,7 +307,14 @@ export const HINTS: Record<string, HintSpec[]> = {
     h("altro pannello", "focus.next"),
   ],
   picker: [h("scorre", "picker.next", "picker.prev"), h("apri", "picker.accept")],
-  "picker:worktree": [h("scorre", "picker.next", "picker.prev"), h("apri", "picker.accept"), h("nuovo worktree", "worktree.create")],
+  "picker:worktree": [
+    h("scorre", "picker.next", "picker.prev"),
+    h("apri", "picker.accept"),
+    h("nuovo worktree", "worktree.create"),
+    h("seleziona", "worktree.markNext", "worktree.markPrev"),
+    h("elimina", "worktree.delete"),
+  ],
+  confirm: [h("conferma", "confirm.accept"), h("annulla", "app.cancel")],
   "picker:folder": [
     h("scorre", "picker.next", "picker.prev"),
     h("apri/entra", "picker.accept"),

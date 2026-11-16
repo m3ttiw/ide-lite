@@ -57,6 +57,10 @@ export interface PickerHandle {
   accept(): void;
   /** Item of the selected row. */
   current(): unknown;
+  /** Index of the selected row. */
+  index(): number;
+  /** Items of the rows shown, in order. */
+  rows(): unknown[];
 }
 let pickerHandle: PickerHandle | null = null;
 export const setPickerHandle = (h: PickerHandle | null) => (pickerHandle = h);

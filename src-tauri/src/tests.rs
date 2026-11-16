@@ -991,6 +991,47 @@ fn worktrees_list_status_and_add() {
 }
 
 #[test]
+fn worktrees_remove() {
+    let tmp = TempDir::new().unwrap();
+    let main_dir = tmp.path().join("repo");
+    init_repo(&main_dir);
+    let main_root = to_slash(&main_dir);
+    write(&main_dir, "a.txt", "a\n");
+    commit_all(&main_dir, "base");
+    let clean = worktree::add_worktree(&main_root, "clean").unwrap();
+    let dirty = worktree::add_worktree(&main_root, "dirty").unwrap();
+    let gone = worktree::add_worktree(&main_root, "gone").unwrap();
+    write(Path::new(&dirty.path), "new.txt", "x\n");
+
+    // never the main worktree, the one open (root inside it) or a stranger
+    assert!(worktree::remove_worktree(&main_root, &main_root, true).is_err());
+    assert!(worktree::remove_worktree(&clean.path, &clean.path, true).is_err());
+    write(Path::new(&clean.path), "sub/s.txt", "s\n");
+    assert!(worktree::remove_worktree(&to_slash(&Path::new(&clean.path).join("sub")), &clean.path, true).is_err());
+    std::fs::remove_dir_all(Path::new(&clean.path).join("sub")).unwrap();
+    assert!(worktree::remove_worktree(&main_root, &to_slash(&tmp.path().join("nope")), true).is_err());
+    assert!(Path::new(&clean.path).is_dir());
+
+    worktree::remove_worktree(&main_root, &clean.path, false).unwrap();
+    assert!(!Path::new(&clean.path).exists());
+    // untracked files: kept unless forced
+    let err = worktree::remove_worktree(&main_root, &dirty.path, false).unwrap_err();
+    assert!(Path::new(&dirty.path).join("new.txt").is_file(), "{err}");
+    worktree::remove_worktree(&main_root, &dirty.path, true).unwrap();
+    assert!(!Path::new(&dirty.path).exists());
+    // folder deleted behind git's back: the record is pruned
+    std::fs::remove_dir_all(&gone.path).unwrap();
+    worktree::remove_worktree(&main_root, &gone.path, false).unwrap();
+
+    let list = worktree::list_worktrees(&main_root).unwrap();
+    assert_eq!(list.len(), 1, "{list:#?}");
+    // the branches stay
+    for b in ["clean", "dirty", "gone"] {
+        g(&main_dir, &["show-ref", "--verify", "--quiet", &format!("refs/heads/{b}")]);
+    }
+}
+
+#[test]
 fn worktree_folder_name() {
     let p = worktree::worktree_dir_for(Path::new("/x/my repo"), "feat/a/b").unwrap();
     assert_eq!(to_slash(&p), "/x/my repo.feat-a-b");

@@ -1,5 +1,7 @@
-import { api, isTauri } from "../api";
-import { dirname } from "../lib/path";
+import { api, isTauri, type Worktree } from "../api";
+import { extendMarks, toggleMark } from "../lib/marks";
+import { dirname, displayWorktreePath } from "../lib/path";
+import { askConfirm, confirmRequest, resolveConfirm } from "../state/confirm";
 import { bufs, closeBuffer, currentEditor, dirtyBuffers, openFile, saveActive } from "../state/buffers";
 import {
   closeOverlay, diffHandles, focusBottom, focusEditor, focusNext, focusTree, getActiveDiff, getFolderHandle, getHelpHandle,
@@ -14,8 +16,11 @@ import { switchRoot } from "../state/session";
 import { collapse, expand, isExpanded, refreshTree, selected, setSelected, toggleDir, treeRows } from "../state/tree";
 import { errorText, flash, savePrefs, setUi, ui } from "../state/ui";
 import { activeRepo, gitRoot, isFolderWs, refreshRepo, refreshStatus, repo, repoPrefix, root } from "../state/workspace";
-import { invalidateWtStatuses, loadWorktrees } from "../state/worktrees";
-import { MODE_NAMES } from "./keymaps";
+import {
+  cannotRemove, clearWtMarks, invalidateWtStatuses, loadWorktrees, mainWorktree, reloadWorktrees, setWtDeleting, setWtMarks, worktreeLabel,
+  worktrees, wtDeleting, wtMarks,
+} from "../state/worktrees";
+import { KEYMAPS, MODE_NAMES, keyFor } from "./keymaps";
 
 export interface Command {
   id: string;
@@ -102,6 +107,7 @@ def("keymap.toggle", "Cambia tasti (Emacs / Standard)", () => {
 def("palette.open", "Comandi", () => openOverlay({ kind: "picker", picker: "command" }));
 def("help.open", "Tutte le scorciatoie", () => openOverlay({ kind: "help" }));
 def("app.cancel", "Annulla", () => {
+  if (confirmRequest()) return resolveConfirm(false);
   if (ui.overlay) return closeOverlay();
   const ed = currentEditor();
   if (ui.focusCtx === "editor" && ed?.current) return ed.cancel();
@@ -239,6 +245,118 @@ def("worktree.create", "Nuovo worktree con questo nome", async () => {
   closeOverlay();
   if (await openWorktree(wt.path, (p) => switchRoot(p))) flash(`Creato il worktree ${name} in ${wt.path}`);
 }, false);
+// ------------------------------------------------------------- deleting worktrees
+
+const inWorktreePicker = () => ui.overlay?.kind === "picker" && ui.overlay.picker === "worktree";
+
+/** From C-<delete> until the last worktree is gone (or the confirmation is declined). */
+let deleteBusy = false;
+function stillDeleting(): boolean {
+  if (!deleteBusy) return false;
+  const p = wtDeleting();
+  flash(p ? `Eliminazione in corso (${p.done} di ${p.total})…` : "Eliminazione in corso…");
+  return true;
+}
+
+/** Ctrl+arrow in the worktree picker: moves and selects, like Shift+arrows in a file manager. */
+function markWorktrees(d: 1 | -1): void {
+  const h = getPickerHandle();
+  if (!h || !inWorktreePicker()) return;
+  if (deleteBusy) return h.move(d);
+  const from = h.index();
+  h.move(d);
+  const to = h.index();
+  const rows = h.rows() as Worktree[];
+  if (!rows.length) return;
+  setWtMarks(extendMarks(wtMarks(), rows.map((w) => w.path), (i) => !cannotRemove(rows[i]), from, to));
+  const why = rows[to] ? cannotRemove(rows[to]) : null;
+  if (why) flash(why);
+}
+
+function toggleWorktreeMark(): void {
+  const w = getPickerHandle()?.current() as Worktree | undefined;
+  if (!w || !inWorktreePicker() || stillDeleting()) return;
+  const why = cannotRemove(w);
+  if (why) return flash(why, true);
+  setWtMarks(toggleMark(wtMarks(), w.path));
+}
+
+const lost = (n: number) => (n === 1 ? "1 file modificato o nuovo: andrà perso" : `${n} file modificati o nuovi: andranno persi`);
+
+/** Deletes the selected worktrees (or the highlighted one) after a confirmation. */
+async function deleteWorktrees(): Promise<void> {
+  if (stillDeleting()) return;
+  deleteBusy = true;
+  try {
+    await confirmAndDelete();
+  } finally {
+    deleteBusy = false;
+    setWtDeleting(null);
+  }
+}
+
+async function confirmAndDelete(): Promise<void> {
+  if (!inWorktreePicker()) {
+    runCommand("worktree.pick");
+    if (!inWorktreePicker()) return;
+    const sel = keyFor(KEYMAPS[ui.mode], "worktree.markNext", ["picker:worktree"]);
+    const del = keyFor(KEYMAPS[ui.mode], "worktree.delete", ["picker:worktree"]);
+    return flash(`Seleziona i worktree con ${sel} e premi ${del} per eliminarli`);
+  }
+  let targets = (worktrees() ?? []).filter((w) => wtMarks().keys.has(w.path));
+  if (!targets.length) {
+    const cur = getPickerHandle()?.current() as Worktree | undefined;
+    if (!cur) return flash("Nessun worktree da eliminare");
+    const why = cannotRemove(cur);
+    if (why) return flash(why, true);
+    targets = [cur];
+  }
+  // fresh numbers: what each deletion would lose (null: unknown)
+  const dirty = await Promise.all(
+    targets.map((w) => (w.prunable ? Promise.resolve(0) : api.worktreeStatus(w.path, null).then((s) => s.dirty, () => null))),
+  );
+  const main = mainWorktree()?.path ?? null;
+  const n = targets.length;
+  const name = worktreeLabel(targets[0]);
+  const ok = await askConfirm({
+    title: n === 1 ? `Eliminare il worktree ${name}?` : `Eliminare ${n} worktree?`,
+    items: targets.map((w, i) => {
+      const d = dirty[i];
+      return {
+        label: worktreeLabel(w),
+        detail: displayWorktreePath(w.path, main) + (w.prunable ? " (cartella già assente)" : ""),
+        warn: d === null ? "Stato non disponibile: se ha modifiche non verrà eliminato" : d ? lost(d) : null,
+      };
+    }),
+    note: "Le cartelle vengono cancellate dal disco. I branch restano nel repository.",
+    confirmLabel: "Elimina",
+  });
+  if (!ok) return;
+  const failed: string[] = [];
+  for (const [i, w] of targets.entries()) {
+    setWtDeleting({ done: i, total: n });
+    flash(n === 1 ? `Elimino ${name}…` : `Elimino ${worktreeLabel(w)} (${i + 1} di ${n})…`);
+    try {
+      await api.removeWorktree(gitRoot(), w.path, (dirty[i] ?? 0) > 0);
+      if (i < n - 1) void reloadWorktrees(); // rows go away one by one
+    } catch (e) {
+      failed.push(`${worktreeLabel(w)}: ${errorText(e)}`);
+    }
+  }
+  setWtDeleting({ done: n, total: n });
+  clearWtMarks();
+  await reloadWorktrees();
+  const done = n - failed.length;
+  if (failed.length) flash(`${done ? `Eliminati ${done} di ${n}. ` : ""}Non eliminati: ${failed.join(" · ")}`, true);
+  else flash(n === 1 ? `Eliminato il worktree ${name}` : `Eliminati ${n} worktree`);
+}
+
+def("worktree.markNext", "Seleziona e scendi", () => markWorktrees(1), false);
+def("worktree.markPrev", "Seleziona e sali", () => markWorktrees(-1), false);
+def("worktree.toggleMark", "Seleziona / deseleziona il worktree", () => toggleWorktreeMark(), false);
+def("worktree.delete", "Elimina worktree", () => deleteWorktrees());
+def("confirm.accept", "Conferma", () => resolveConfirm(true), false);
+
 def("settings.open", "Impostazioni", () => openOverlay({ kind: "settings" }));
 def("app.update", "Aggiorna ide-lite", () => runUpdate());
 def("settings.next", "Controllo successivo", () => getSettingsHandle()?.move(1), false);

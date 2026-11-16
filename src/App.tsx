@@ -1,7 +1,9 @@
 import { Show, createEffect, onCleanup, onMount, type JSX } from "solid-js";
 import { FloatingMessage, HintBar, Rail, StatusBar, TopBar } from "./components/Bars";
 import { EditorArea } from "./components/EditorArea";
+import { ConfirmDialog } from "./components/Confirm";
 import { BottomPanel } from "./components/GitPanel";
+import { confirmRequest } from "./state/confirm";
 import { HelpOverlay, PickerOverlay } from "./components/Overlays";
 import { Resizer } from "./components/Resizer";
 import { SettingsOverlay } from "./components/Settings";
@@ -71,6 +73,9 @@ export default function App(): JSX.Element {
       <FloatingMessage />
       <Show when={ui.overlay} keyed>
         {(o) => (o.kind === "picker" ? <PickerOverlay kind={o.picker} /> : o.kind === "settings" ? <SettingsOverlay /> : <HelpOverlay />)}
+      </Show>
+      <Show when={confirmRequest()} keyed>
+        {(r) => <ConfirmDialog spec={r} />}
       </Show>
     </div>
   );

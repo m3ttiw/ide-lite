@@ -1,6 +1,7 @@
 import { createSignal } from "solid-js";
 import { api, type Worktree, type WorktreeStatus } from "../api";
 import { samePath } from "../lib/gitroot";
+import { NO_MARKS, type Marks } from "../lib/marks";
 import { errorText, flash } from "./ui";
 import { gitGeneration as generation, gitRoot as root } from "./workspace";
 
@@ -48,6 +49,12 @@ export function loadWorktrees(): Promise<void> {
     });
   inflight = { gen: g, p };
   return p;
+}
+
+/** Like loadWorktrees, but never answers with a listing that started before the call. */
+export async function reloadWorktrees(): Promise<void> {
+  if (inflight) await inflight.p;
+  return loadWorktrees();
 }
 
 /** Numbers known to be out of date: kept on screen until the new ones arrive. */
@@ -101,6 +108,25 @@ export function resetWorktrees(): void {
   setWorktrees(null);
   clearWtStatuses();
 }
+
+/** Branch, or the short hash of a detached worktree. */
+export const worktreeLabel = (w: Worktree) => w.branch ?? `(staccato) ${w.head.slice(0, 7)}`;
+
+/** Why a worktree cannot be deleted from here; null when it can. */
+export function cannotRemove(w: Worktree): string | null {
+  if (w.isMain) return "Il worktree principale non si può eliminare";
+  if (samePath(w.path, root())) return "È il worktree aperto: passa a un altro prima di eliminarlo";
+  return null;
+}
+
+// Worktrees selected for deletion in the worktree picker (C-<down> / C-<up>).
+const [marks, setMarks] = createSignal<Marks>(NO_MARKS);
+export const wtMarks = marks;
+export const setWtMarks = setMarks;
+export const clearWtMarks = () => setMarks(NO_MARKS);
+
+/** A deletion under way: worktrees done out of the total; null when idle. */
+export const [wtDeleting, setWtDeleting] = createSignal<{ done: number; total: number } | null>(null);
 
 export function describeStatus(w: Worktree, s: St | undefined, isCurrent: boolean): string {
   const parts: string[] = [];

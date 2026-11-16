@@ -940,4 +940,14 @@ export const mockApi: Api = {
     worktrees.push(wt);
     return { ...wt };
   },
+
+  async removeWorktree(root, path, force) {
+    await latency(120, 260);
+    const i = worktrees.findIndex((w) => w.path === path);
+    if (i < 0) throw `${path} non è un worktree di questo repository`;
+    if (worktrees[i].isMain) throw "Il worktree principale non si può eliminare";
+    if (worktreeOf(root)?.path === path) throw `${path} è il worktree aperto`;
+    if (!force && statusFor(path).length) throw `${path} contiene file modificati o non tracciati, usa --force per eliminarlo`;
+    worktrees.splice(i, 1);
+  },
 };

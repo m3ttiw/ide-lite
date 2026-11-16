@@ -1,5 +1,6 @@
 import { createEffect, createRoot, on } from "solid-js";
 import { Dispatcher, eventToKey } from "../lib/keys";
+import { confirmRequest } from "../state/confirm";
 import { flash, setUi, ui } from "../state/ui";
 import { runCommand } from "./commands";
 import { KEYMAPS } from "./keymaps";
@@ -21,6 +22,8 @@ createRoot(() =>
 
 /** Contexts used to resolve keys, most specific first. */
 export function activeContexts(): string[] {
+  // a confirmation takes every key: nothing else runs behind it
+  if (confirmRequest()) return ["confirm"];
   const o = ui.overlay;
   if (o?.kind === "picker") return [`picker:${o.picker}`, "picker", "global"];
   if (o?.kind === "help") return ["help", "global"];

@@ -4,6 +4,7 @@ import { activeContexts } from "../core/keyboard";
 import { CONTEXT_TITLES, HINTS, KEYMAPS, MODE_NAMES, keyFor } from "../core/keymaps";
 import { continuations } from "../lib/keys";
 import { activeBuffer, activeLanguageName } from "../state/buffers";
+import { confirmRequest } from "../state/confirm";
 import { message, ui } from "../state/ui";
 import { folderRepos } from "../state/activeRepo";
 import { activeRepo, isFolderWs, projectName, repo, repoPrefix, root, status } from "../state/workspace";
@@ -115,6 +116,7 @@ const PICKER_TITLES: Record<string, string> = {
 
 export function HintBar(): JSX.Element {
   const ctxKey = () => {
+    if (confirmRequest()) return "confirm";
     const o = ui.overlay;
     if (o?.kind === "picker") return HINTS[`picker:${o.picker}`] ? `picker:${o.picker}` : "picker";
     if (o?.kind === "help") return "help";
@@ -123,6 +125,7 @@ export function HintBar(): JSX.Element {
   };
   const chip = () => {
     if (ui.pending.length) return `${ui.pending.join(" ")} –`;
+    if (confirmRequest()) return CONTEXT_TITLES.confirm;
     const o = ui.overlay;
     if (o?.kind === "picker") return PICKER_TITLES[o.picker];
     if (o?.kind === "help") return "Scorciatoie";
@@ -146,6 +149,7 @@ export function HintBar(): JSX.Element {
   });
   const right = () => {
     if (ui.pending.length) return { keys: "C-g", label: "annulla" };
+    if (confirmRequest()) return null; // its hints already say how to cancel
     if (ui.overlay) {
       const k = keyFor(KEYMAPS[ui.mode], "app.cancel", ["global", ...activeContexts()]);
       return k ? { keys: k, label: ui.overlay.kind === "picker" ? "annulla" : "chiudi" } : null;

@@ -1,4 +1,4 @@
-//! `git worktree` listing, per-worktree status and creation.
+//! `git worktree` listing, per-worktree status, creation and removal.
 
 use crate::git::parse_status_v2;
 use crate::gitcmd::{self, Mode, lossy};
@@ -174,4 +174,39 @@ pub fn add_worktree(root: &str, branch: &str) -> Result<Worktree, String> {
         .into_iter()
         .find(|w| compare_key(&canonical_slash(Path::new(&w.path))) == target_key)
         .ok_or_else(|| format!("worktree created at {} but not listed", to_slash(&target)))
+}
+
+/// Removes a linked worktree: its folder and git's record of it. `force` also
+/// removes one with modified or untracked files, which are lost. Refuses the
+/// main worktree and the one `root` is in; the branch is kept. A worktree whose
+/// folder is already gone only has its record pruned.
+pub fn remove_worktree(root: &str, path: &str, force: bool) -> Result<(), String> {
+    let dir = root_dir(root)?;
+    let raw = raw_list(&dir)?.ok_or("not a git repository")?;
+    let key = compare_key(&canonical_slash(Path::new(path)));
+    let i = raw
+        .iter()
+        .position(|w| compare_key(&canonical_slash(Path::new(&w.path))) == key)
+        .ok_or_else(|| format!("{path} is not a worktree of this repository"))?;
+    if i == 0 {
+        return Err("the main worktree cannot be removed".to_string());
+    }
+    if is_within(&compare_key(&canonical_slash(&dir)), &key) {
+        return Err(format!("{path} is the worktree open in ide-lite"));
+    }
+    let target = Path::new(&raw[i].path);
+    let out = if target.exists() {
+        let mut args: Vec<&std::ffi::OsStr> = vec!["worktree".as_ref(), "remove".as_ref()];
+        if force {
+            args.push("--force".as_ref());
+        }
+        args.push(target.as_os_str());
+        gitcmd::run(&dir, Mode::Write, &args)?
+    } else {
+        gitcmd::run(&dir, Mode::Write, &["worktree", "prune"])?
+    };
+    if !out.ok() {
+        return Err(gitcmd::failure("worktree remove", &out));
+    }
+    Ok(())
 }

@@ -293,6 +293,14 @@ export interface Api {
   addWorktree(root: string, branch: string): Promise<Worktree>;
 
   /**
+   * Removes the linked worktree at `path`: its folder and git's record of it.
+   * `force` also removes one with modified or untracked files (lost). The
+   * branch stays. Rejects the main worktree and the one `root` is in; a
+   * worktree whose folder is already gone only has its record pruned.
+   */
+  removeWorktree(root: string, path: string, force: boolean): Promise<void>;
+
+  /**
    * Git repositories found INSIDE `root` (never `root` itself), for when the
    * user opens a parent folder that holds several projects. Walks at most
    * `maxDepth` levels below root (1 = direct children only), does not descend

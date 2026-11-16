@@ -16,7 +16,11 @@ import { errorText, flash, ui, type PickerKind } from "../state/ui";
 import { activeRepo, generation, gitRoot, isFolderWs, repoPrefix, root } from "../state/workspace";
 import { activateRepo, openWorktree } from "../state/activeRepo";
 import { samePath, toWorkspacePath } from "../lib/gitroot";
-import { describeStatus, ensureWtStatus, needsWtStatus, loadingList, mainWorktree, worktrees, wtStatus } from "../state/worktrees";
+import {
+  cannotRemove, clearWtMarks, describeStatus, ensureWtStatus, needsWtStatus, loadingList, mainWorktree, setWtMarks, worktreeLabel, worktrees, wtDeleting,
+  wtMarks, wtStatus,
+} from "../state/worktrees";
+import { keepListed } from "../lib/marks";
 import { Highlight, Kbd, keyOf } from "./common";
 import { VirtualList, type VirtualListApi } from "./VirtualList";
 
@@ -97,6 +101,8 @@ function Picker<T>(props: { spec: PickerSpec<T> }): JSX.Element {
     page: (dir: 1 | -1) => move(dir * (list?.pageRows() ?? MAX_ROWS)),
     accept: () => s.accept(results()[sel()], pickerQuery()),
     current: () => results()[sel()]?.item,
+    index: () => sel(),
+    rows: () => results().map((r) => r.item),
   };
   setPickerHandle(handle);
   // a picker replacing another one is created before the old one is disposed
@@ -351,8 +357,15 @@ function WorktreePicker(): JSX.Element {
     const rest = list.filter((w) => !w.isMain && !samePath(w.path, gitRoot()));
     return [...cur, ...main, ...rest];
   });
-  const label = (w: Worktree) => w.branch ?? `(staccato) ${w.head.slice(0, 7)}`;
+  const label = worktreeLabel;
   const mainPath = () => mainWorktree()?.path ?? null;
+  // selection for deletion: starts empty, follows the list, a new filter ends the Ctrl+arrow run
+  clearWtMarks();
+  onCleanup(clearWtMarks);
+  createEffect(on(worktrees, (list) => list && setWtMarks(keepListed(untrack(wtMarks), list.map((w) => w.path))), { defer: true }));
+  createEffect(on(pickerQuery, () => untrack(wtMarks).run && setWtMarks({ keys: untrack(wtMarks).keys, run: null }), { defer: true }));
+  const marked = (w: Worktree) => wtMarks().keys.has(w.path);
+  const selecting = () => wtMarks().keys.size > 0;
   return (
     <Picker
       spec={{
@@ -378,6 +391,12 @@ function WorktreePicker(): JSX.Element {
           });
           return (
             <>
+              <Show when={selecting()}>
+                <span class="wt-check" classList={{ on: marked(w), off: !!cannotRemove(w) }} aria-hidden="true" />
+              </Show>
+              <Show when={marked(w)}>
+                <span class="sr-only">Selezionato per l'eliminazione.</span>
+              </Show>
               <span class="dot" classList={{ current: isCur }} aria-hidden="true" />
               <span class="wt-text">
                 <span class="wt-branch">{label(w)}</span>
@@ -410,8 +429,24 @@ function WorktreePicker(): JSX.Element {
             "Nessun worktree."
           );
         },
-        counter: (n, t) => `${n} di ${t}`,
-        footer: () => <KeysFooter items={[["picker.next", "scorre"], ["picker.accept", "apri"], ["worktree.create", "nuovo worktree"], ["app.cancel", "annulla"]]} />,
+        counter: (n, t) => {
+          const d = wtDeleting();
+          if (d) return `${n} di ${t} · elimino ${Math.min(d.done + 1, d.total)} di ${d.total}…`;
+          return `${n} di ${t}${selecting() ? ` · ${wtMarks().keys.size} selezionati` : ""}`;
+        },
+        rowClass: (w) => (marked(w) ? "marked" : ""),
+        footer: () => (
+          <KeysFooter
+            items={[
+              ["picker.next", "scorre"],
+              ["picker.accept", "apri"],
+              ["worktree.create", "nuovo"],
+              ["worktree.markNext", "seleziona"],
+              ["worktree.delete", "elimina"],
+              ["app.cancel", "annulla"],
+            ]}
+          />
+        ),
       }}
     />
   );
