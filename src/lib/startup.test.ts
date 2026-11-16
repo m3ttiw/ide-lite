@@ -11,7 +11,7 @@ function opener(missing: string[] = []) {
   return { tried, open };
 }
 
-const fallback = async () => "C:/cwd";
+const fallback = async () => "C:/Users/me";
 
 describe("openStartup", () => {
   it("opens the folder given on the command line, ignoring the recents", async () => {
@@ -32,18 +32,18 @@ describe("openStartup", () => {
     expect(o.tried).toEqual(["C:/last", "C:/older", "C:/oldest"]);
   });
 
-  it("falls back to the working directory on a first run or when every recent is gone", async () => {
+  it("falls back to the home folder on a first run or when every recent is gone", async () => {
     const first = opener();
-    expect(await openStartup({ launch: null, recents: [], fallback }, first.open)).toBe("C:/cwd");
-    expect(first.tried).toEqual(["C:/cwd"]);
+    expect(await openStartup({ launch: null, recents: [], fallback }, first.open)).toBe("C:/Users/me");
+    expect(first.tried).toEqual(["C:/Users/me"]);
 
     const gone = opener(["C:/last"]);
-    expect(await openStartup({ launch: null, recents: ["C:/last"], fallback }, gone.open)).toBe("C:/cwd");
-    expect(gone.tried).toEqual(["C:/last", "C:/cwd"]);
+    expect(await openStartup({ launch: null, recents: ["C:/last"], fallback }, gone.open)).toBe("C:/Users/me");
+    expect(gone.tried).toEqual(["C:/last", "C:/Users/me"]);
   });
 
   it("does not hide a failure of the requested folder or of the fallback", async () => {
     await expect(openStartup({ launch: "C:/asked", recents: ["C:/last"], fallback }, opener(["C:/asked"]).open)).rejects.toThrow("C:/asked");
-    await expect(openStartup({ launch: null, recents: [], fallback }, opener(["C:/cwd"]).open)).rejects.toThrow("C:/cwd");
+    await expect(openStartup({ launch: null, recents: [], fallback }, opener(["C:/Users/me"]).open)).rejects.toThrow("C:/Users/me");
   });
 });

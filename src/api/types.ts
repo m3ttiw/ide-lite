@@ -217,7 +217,7 @@ export interface UpdateState {
 export interface Api {
   /**
    * Folder to open at startup: the first command-line argument when it is an
-   * existing directory, otherwise the process working directory.
+   * existing directory, otherwise the user's home folder.
    */
   initialRoot(): Promise<string>;
 

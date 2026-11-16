@@ -262,14 +262,26 @@ fn absolute_paths_use_forward_slashes_without_verbatim_prefix() {
 }
 
 #[test]
-fn initial_root_prefers_existing_dir_argument() {
+fn initial_root_is_the_dir_argument_else_the_home_folder() {
     let tmp = TempDir::new().unwrap();
-    let got = crate::initial_root_impl(Some(tmp.path().as_os_str().to_owned())).unwrap();
+    let home = TempDir::new().unwrap();
+    let h = || Some(home.path().to_path_buf());
+    let got = crate::initial_root_impl(Some(tmp.path().as_os_str().to_owned()), h()).unwrap();
     assert_eq!(got, canonical_slash(tmp.path()));
-    let cwd = canonical_slash(&std::env::current_dir().unwrap());
+    // no folder asked for (Start menu), or one that does not exist: the home folder
     let missing = tmp.path().join("nope");
-    assert_eq!(crate::initial_root_impl(Some(missing.into_os_string())).unwrap(), cwd);
-    assert_eq!(crate::initial_root_impl(None).unwrap(), cwd);
+    assert_eq!(crate::initial_root_impl(Some(missing.into_os_string()), h()).unwrap(), canonical_slash(home.path()));
+    assert_eq!(crate::initial_root_impl(None, h()).unwrap(), canonical_slash(home.path()));
+    // no usable home folder either: the current directory
+    let cwd = canonical_slash(&std::env::current_dir().unwrap());
+    assert_eq!(crate::initial_root_impl(None, None).unwrap(), cwd);
+    assert_eq!(crate::initial_root_impl(None, Some(tmp.path().join("gone"))).unwrap(), cwd);
+}
+
+#[test]
+fn home_folder_is_the_user_profile() {
+    let var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    assert_eq!(crate::home_folder(), std::env::var_os(var).map(std::path::PathBuf::from));
 }
 
 #[test]

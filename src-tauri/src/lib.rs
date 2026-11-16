@@ -35,10 +35,19 @@ fn launch_folder_impl(arg: Option<std::ffi::OsString>) -> Option<String> {
     p.is_dir().then(|| paths::canonical_slash(&p))
 }
 
-/// The launch folder, else the current directory.
-fn initial_root_impl(arg: Option<std::ffi::OsString>) -> Result<String, String> {
+/// The user's home folder: `USERPROFILE` on Windows, `HOME` elsewhere.
+fn home_folder() -> Option<std::path::PathBuf> {
+    let var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    std::env::var_os(var).map(std::path::PathBuf::from)
+}
+
+/// The launch folder, else the home folder, else (no usable home) the current directory.
+fn initial_root_impl(arg: Option<std::ffi::OsString>, home: Option<std::path::PathBuf>) -> Result<String, String> {
     if let Some(p) = launch_folder_impl(arg) {
         return Ok(p);
+    }
+    if let Some(h) = home.filter(|h| h.is_dir()) {
+        return Ok(paths::canonical_slash(&h));
     }
     let cwd = std::env::current_dir().map_err(|e| format!("current directory: {e}"))?;
     Ok(paths::canonical_slash(&cwd))
@@ -46,7 +55,7 @@ fn initial_root_impl(arg: Option<std::ffi::OsString>) -> Result<String, String> 
 
 #[tauri::command]
 async fn initial_root() -> Result<String, String> {
-    blocking(|| initial_root_impl(std::env::args_os().nth(1))).await
+    blocking(|| initial_root_impl(std::env::args_os().nth(1), home_folder())).await
 }
 
 #[tauri::command]

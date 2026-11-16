@@ -116,7 +116,7 @@ export async function openRoot(folder: string): Promise<void> {
 
 /**
  * Startup: the folder given on the command line, else the last folder used
- * that still exists, else the working directory.
+ * that still exists, else the home folder.
  */
 export async function openStartupFolder(): Promise<void> {
   await openStartup({ launch: await api.launchFolder(), recents: ui.recents, fallback: () => api.initialRoot() }, openRoot);

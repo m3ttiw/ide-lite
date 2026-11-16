@@ -45,7 +45,7 @@ npm run dev                                  # solo interfaccia nel browser, con
 npx tauri build --no-bundle                  # eseguibile in src-tauri/target/release
 ```
 
-Senza argomento l'app riapre l'ultima cartella usata; al primo avvio, o se quella non esiste più, apre la cartella da cui viene lanciata.
+Senza argomento l'app riapre l'ultima cartella usata; al primo avvio, o se quella non esiste più, apre la cartella home dell'utente.
 
 Test:
 

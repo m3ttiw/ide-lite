@@ -5,7 +5,7 @@ export interface StartupSources {
   launch: string | null;
   /** Folders opened before, most recent first. */
   recents: readonly string[];
-  /** Folder to use when nothing else opens (the working directory). */
+  /** Folder to use when nothing else opens (the home folder). */
   fallback: () => Promise<string>;
 }
 
