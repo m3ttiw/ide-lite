@@ -1,3 +1,10 @@
+# [0.5.0](https://github.com/m3ttiw/ide-lite/compare/v0.4.0...v0.5.0) (2026-11-16)
+
+
+### Features
+
+* Apri file cerca anche per schema con * e ? ([b8aae46](https://github.com/m3ttiw/ide-lite/commit/b8aae466b6b30c19e131f4be458d1fbf39c3323b))
+
 # [0.4.0](https://github.com/m3ttiw/ide-lite/compare/v0.3.0...v0.4.0) (2026-11-14)
 
 
