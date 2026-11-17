@@ -62,6 +62,7 @@ cargo test --manifest-path src-tauri/Cargo.toml   # backend, su repository git c
 - La versione vive solo in `package.json` (`tauri.conf.json` la legge da lì). Non creare tag a mano: il commit `chore(release): X.Y.Z` e il tag `vX.Y.Z` li fa `versioning.yml`, che poi avvia `release.yml`.
 - `release.yml` esegue i test, costruisce l'installer NSIS firmato per l'updater e lo pubblica con `.sig` e `latest.json` in una release creata come bozza e resa pubblica solo se tutto è riuscito.
 - L'app installata controlla `releases/latest/download/latest.json` 15 secondi dopo l'avvio e poi ogni 6 ore (si disattiva da Impostazioni, `C-,`); scarica e installa solo su comando ("Aggiorna ide-lite" da `M-x`, o dalle Impostazioni), poi si riavvia. Le build di sviluppo non controllano nulla.
+- Un aggiornamento sostituisce l'exe ma non ricrea i collegamenti: `src-tauri/windows/installer-hooks.nsh` avvisa Explorer a fine installazione e fa ricostruire la cache delle icone, così desktop e menu Start mostrano il logo nuovo.
 - Secret richiesti: `TAURI_SIGNING_PRIVATE_KEY` (contenuto della chiave privata) e, solo se la chiave ha una password, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (GitHub non accetta secret vuoti; se manca vale stringa vuota).
 
 ## Struttura
