@@ -1,3 +1,10 @@
+## [0.7.1](https://github.com/m3ttiw/ide-lite/compare/v0.7.0...v0.7.1) (2026-11-17)
+
+
+### Bug Fixes
+
+* dopo un aggiornamento desktop e menu Start mostrano la nuova icona ([429dc4a](https://github.com/m3ttiw/ide-lite/commit/429dc4abc35fbd7ec11981e4aca6102c95b50c53))
+
 # [0.7.0](https://github.com/m3ttiw/ide-lite/compare/v0.6.0...v0.7.0) (2026-11-16)
 
 
