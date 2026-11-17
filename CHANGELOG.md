@@ -1,3 +1,10 @@
+## [0.7.2](https://github.com/m3ttiw/ide-lite/compare/v0.7.1...v0.7.2) (2026-11-17)
+
+
+### Bug Fixes
+
+* il grafo non interrompe un ramo quando un merge lo raggiunge ([dfd9ddc](https://github.com/m3ttiw/ide-lite/commit/dfd9ddc05f80d3bc1c2fa1fb3c9b311cbe034cda))
+
 ## [0.7.1](https://github.com/m3ttiw/ide-lite/compare/v0.7.0...v0.7.1) (2026-11-17)
 
 
