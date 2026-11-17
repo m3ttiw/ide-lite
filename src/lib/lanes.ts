@@ -14,6 +14,11 @@ export interface LaneRow {
   color: number;
   /** Columns (in `out`) that this node feeds: first parent first. */
   parentCols: number[];
+  /**
+   * Parent columns whose lane already came down from above (a merge of a commit
+   * another lane is waiting for): that lane goes on as well as the merge line.
+   */
+  joins: number[];
   /** Hash expected by each lane below this row (null = free). */
   out: (string | null)[];
   /** Colour index of each lane below this row. */
@@ -65,6 +70,7 @@ export class LaneBuilder {
     for (let i = 0; i < this.lanes.length; i++) if (i !== col && this.lanes[i] === c.hash) this.lanes[i] = null;
 
     const parentCols: number[] = [];
+    const joins: number[] = [];
     if (c.parents.length === 0) {
       this.lanes[col] = null;
     } else {
@@ -76,6 +82,8 @@ export class LaneBuilder {
           j = this.alloc();
           this.lanes[j] = p;
           this.colors[j] = this.nextColor++ % this.palette;
+        } else if (j < widthIn && j !== col) {
+          joins.push(j);
         }
         parentCols.push(j);
       }
@@ -86,7 +94,7 @@ export class LaneBuilder {
       this.colors.pop();
     }
     if (width > this.maxWidth) this.maxWidth = width;
-    return { col, color, parentCols, out: this.lanes.slice(), outColors: this.colors.slice(), width };
+    return { col, color, parentCols, joins, out: this.lanes.slice(), outColors: this.colors.slice(), width };
   }
 }
 
@@ -104,9 +112,11 @@ export function edgesBetween(a: LaneRow, next?: { hash: string; row: LaneRow }):
   const edges: Edge[] = [];
   a.out.forEach((h, i) => {
     if (h === null) return;
-    const from = a.parentCols.includes(i) ? a.col : i;
     const to = next && h === next.hash ? next.row.col : i;
-    edges.push({ from, to, color: a.outColors[i] });
+    const color = a.outColors[i];
+    const fromNode = a.parentCols.includes(i);
+    if (!fromNode || a.joins.includes(i)) edges.push({ from: i, to, color });
+    if (fromNode) edges.push({ from: a.col, to, color });
   });
   return edges;
 }

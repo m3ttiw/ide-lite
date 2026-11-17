@@ -53,6 +53,24 @@ describe("lanes", () => {
     expect(e[2].map((x) => [x.from, x.to])).toEqual([[0, 0], [1, 0]]);
   });
 
+  it("merging a commit another lane waits for keeps that lane going", () => {
+    // T waits for a in lane 0; S (lane 1) merges a while lane 0 still passes by.
+    const commits = [c("T", "a"), c("S", "x", "a"), c("x", "a"), c("a")];
+    const rows = computeLanes(commits);
+    expect(rows[1].col).toBe(1);
+    expect(rows[1].parentCols).toEqual([1, 0]);
+    expect(rows[1].joins).toEqual([0]);
+    const e = edgesOf(commits);
+    const lane0 = rows[0].color;
+    expect(e[1]).toEqual([
+      { from: 0, to: 0, color: lane0 }, // lane 0 from T goes on
+      { from: 1, to: 0, color: lane0 }, // the merge line joins it
+      { from: 1, to: 1, color: rows[1].color },
+    ]);
+    // a merge into a lane it opens itself has nothing to keep going
+    expect(computeLanes([c("M", "m1", "x"), c("x", "a")])[0].joins).toEqual([]);
+  });
+
   it("octopus merge opens one lane per extra parent", () => {
     const commits = [c("O", "p1", "p2", "p3"), c("p3", "r"), c("p2", "r"), c("p1", "r"), c("r")];
     const rows = computeLanes(commits);
