@@ -10,6 +10,9 @@ Tauri 2 (backend Rust) + Solid + CodeMirror 6. L'eseguibile pesa circa 5 MB.
 - **Editor**: schede, salvataggio che conserva il fine riga del file, sintassi colorata (Rust, JS/TS, JSON, Markdown, HTML, CSS, Python, TOML, YAML).
 - **Cronologia**: grafo dei commit con rami e merge, file cambiati e diff per ogni commit.
 - **Modifiche**: file in stage, non in stage e non tracciati, ognuno con il suo diff.
+- **Revisione**: tutto ciò che il worktree cambia rispetto alla base (il branch di destinazione della pull request, se c'è). Un file si segna come visto; se poi cambia ancora, il diff mostra solo le novità rispetto alla versione vista.
+- **Pull request** (GitHub e Azure DevOps): nella Revisione compaiono stato, revisori, controlli e pipeline della PR del branch; le discussioni appaiono sotto la riga del diff su cui sono state scritte. L'accesso usa le credenziali di git (Git Credential Manager), altrimenti `gh auth token` o `az login`.
+- **Confronto**: schermata a due colonne, prima a sinistra e dopo a destra, tra un commit e il suo genitore, tra due commit qualsiasi, tra un commit e le modifiche attuali, o tra la versione vista in Revisione e quella di adesso.
 - **Worktree**: selettore con ricerca per branch o cartella, cambio rapido, creazione di un nuovo worktree, eliminazione di uno o più worktree con conferma.
 - **Suggerimenti**: la barra in basso mostra le scorciatoie valide nel pannello attivo; dopo un prefisso come `C-x` elenca tutte le continuazioni.
 
@@ -26,6 +29,8 @@ Notazione Emacs: `C-` è Ctrl, `M-` è Alt. La modalità "Standard" (Ctrl+P, Ctr
 | `C-x b` / `C-x k` | Cambia / chiudi buffer |
 | `C-x o` | Pannello successivo |
 | `C-x g` / `C-x m` | Cronologia / modifiche |
+| `C-x r` | Revisione |
+| `a` | Confronto affiancato del file o commit selezionato |
 | `C-x w` | Cerca worktree |
 | `C-x d` | Apri cartella |
 | `M-x` | Tutti i comandi |
@@ -35,6 +40,8 @@ Notazione Emacs: `C-` è Ctrl, `M-` è Alt. La modalità "Standard" (Ctrl+P, Ctr
 In Apri file una ricerca con `*` o `?` è uno schema sul nome intero del file: `communications*.ts` trova i file il cui nome inizia per "communications" e finisce per ".ts". `*` non attraversa le cartelle, `**` sì; con una `/` lo schema vale per il percorso (`api/*.ts`, `src/**/*.test.ts`) e una `/` iniziale lo lega alla radice.
 
 Nel selettore dei worktree (`C-x w`) `C-<down>` e `C-<up>` selezionano mentre scorrono, `C-SPC` seleziona o deseleziona la riga corrente e `C-<delete>` elimina i selezionati, o la riga corrente se non ce ne sono. Una finestra elenca cosa verrà cancellato, con un avviso per i worktree che hanno file modificati o nuovi; si conferma con `C-RET` (`RET` da solo non basta) e si annulla con `ESC` o `C-g`. Le cartelle spariscono dal disco, i branch restano. Il worktree principale e quello aperto non si possono eliminare.
+
+Nella Revisione `v` (o `SPC`) segna il file come visto, `b` passa tra solo le novità e tutto il diff, `w` apre la pull request (o la pagina per crearla) e `o` apre il file. Nella cronologia `m` segna un commit: poi `a` su un altro commit li confronta tra loro, mentre `w` confronta il commit selezionato con le modifiche attuali. Nel Confronto `n`/`p` cambiano file, `SPC`/`DEL` saltano alla modifica successiva o precedente, `t` mostra il file intero, `s` scambia i lati, `o` apre il file e `q` chiude.
 
 ## Sviluppo
 
@@ -67,7 +74,7 @@ cargo test --manifest-path src-tauri/Cargo.toml   # backend, su repository git c
 
 ## Struttura
 
-- `src/api/types.ts` — contratto tra interfaccia e backend: le 15 chiamate e i loro tipi.
+- `src/api/types.ts` — contratto tra interfaccia e backend: le chiamate e i loro tipi.
 - `src-tauri/src/` — comandi Rust; git è usato tramite l'eseguibile di sistema.
 - `src/` — interfaccia: `core/` (comandi e tasti), `state/`, `components/`, `editor/` (CodeMirror, caricato dopo il primo disegno).
 - `public/icon.svg` — il logo ("IL", ide lite). Le icone in `src-tauri/icons` si rigenerano da lì con `npx tauri icon public/icon.svg` (poi si tengono solo i file già presenti, niente `android/` e `ios/`).
