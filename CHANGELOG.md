@@ -1,3 +1,13 @@
+# [0.8.0](https://github.com/m3ttiw/ide-lite/compare/v0.7.2...v0.8.0) (2026-11-18)
+
+
+### Features
+
+* ricerca della pull request del branch su GitHub e Azure DevOps ([f328a3f](https://github.com/m3ttiw/ide-lite/commit/f328a3f3c6101594ec0398befdcdae0a9d4bd748))
+* scheda Revisione per rivedere il lavoro di un worktree ([188d679](https://github.com/m3ttiw/ide-lite/commit/188d679f8b6b15478c4f4612331232030de9eafd))
+* schermata Confronto affiancato tra due versioni ([2730a93](https://github.com/m3ttiw/ide-lite/commit/2730a9391042b7ee82986cae60bea26eb7b326d1))
+* stato della pull request e commenti nella Revisione ([d93316a](https://github.com/m3ttiw/ide-lite/commit/d93316a005bb1ac238a5e83c0978250640db8993))
+
 ## [0.7.2](https://github.com/m3ttiw/ide-lite/compare/v0.7.1...v0.7.2) (2026-11-17)
 
 
