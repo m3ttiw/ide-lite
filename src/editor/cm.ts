@@ -468,3 +468,5 @@ export class Editor {
     v.focus();
   }
 }
+
+export { theme as editorTheme, highlight as editorHighlight };

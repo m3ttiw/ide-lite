@@ -122,6 +122,7 @@ export function HintBar(): JSX.Element {
     if (o?.kind === "picker") return HINTS[`picker:${o.picker}`] ? `picker:${o.picker}` : "picker";
     if (o?.kind === "help") return "help";
     if (o?.kind === "settings") return "settings";
+    if (o?.kind === "compare") return "compare";
     if (ui.focusCtx === "diff" && getActiveDiff() === diffHandles.review) return "diff:review";
     return HINTS[ui.focusCtx] ? ui.focusCtx : "global";
   };
@@ -132,6 +133,7 @@ export function HintBar(): JSX.Element {
     if (o?.kind === "picker") return PICKER_TITLES[o.picker];
     if (o?.kind === "help") return "Scorciatoie";
     if (o?.kind === "settings") return "Impostazioni";
+    if (o?.kind === "compare") return CONTEXT_TITLES.compare;
     return CONTEXT_TITLES[ui.focusCtx] ?? "Generale";
   };
   const items = createMemo((): { keys: string; label: string }[] => {

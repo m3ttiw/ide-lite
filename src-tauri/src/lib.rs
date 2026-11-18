@@ -166,6 +166,16 @@ async fn mark_reviewed(root: String, paths: Vec<String>) -> Result<Vec<Option<St
 }
 
 #[tauri::command]
+async fn compare_files(root: String, from: String, to: Option<String>) -> Result<Vec<ReviewFile>, String> {
+    blocking(move || review::compare_files(&root, &from, to.as_deref())).await
+}
+
+#[tauri::command]
+async fn file_text(root: String, rev: Option<String>, path: String) -> Result<FileText, String> {
+    blocking(move || review::file_text(&root, rev.as_deref(), &path)).await
+}
+
+#[tauri::command]
 async fn pull_request(root: String) -> Result<PrLookup, String> {
     pr::pull_request(root).await
 }
@@ -260,6 +270,8 @@ pub fn run() {
             review_files,
             review_file_diff,
             mark_reviewed,
+            compare_files,
+            file_text,
             pull_request,
             open_url,
             find_repos,

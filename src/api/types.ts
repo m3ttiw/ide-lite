@@ -162,6 +162,13 @@ export interface ReviewInfo {
   files: ReviewFile[];
 }
 
+/** One version of a file for the side-by-side comparison. */
+export interface FileText {
+  /** missing: the file is not in that version; tooLarge: over 5 MB. */
+  kind: "text" | "missing" | "binary" | "tooLarge";
+  text: string | null;
+}
+
 export type PrReviewerState = "approved" | "suggestions" | "changes" | "rejected" | "waiting" | "commented" | "pending";
 export type PrCheckState = "success" | "failure" | "pending" | "neutral" | "skipped";
 
@@ -386,6 +393,18 @@ export interface Api {
    * Never fails for "no pull request" or a missing login: see PrLookup.status.
    */
   pullRequest(root: string): Promise<PrLookup>;
+
+  /**
+   * Files that differ between two commits (`from`, `to`: hash, branch or the
+   * empty tree), or between `from` and the working tree (untracked files
+   * included) when `to` is null. Paths are relative to the repository root.
+   */
+  compareFiles(root: string, from: string, to: string | null): Promise<ReviewFile[]>;
+  /**
+   * Whole content of a file: in commit `rev`, in the blob `rev` (a reviewed
+   * snapshot), or on disk when `rev` is null.
+   */
+  fileText(root: string, rev: string | null, path: string): Promise<FileText>;
   /** Opens an https link in the default browser. */
   openUrl(url: string): Promise<void>;
 

@@ -28,6 +28,7 @@ export function activeContexts(): string[] {
   if (o?.kind === "picker") return [`picker:${o.picker}`, "picker", "global"];
   if (o?.kind === "help") return ["help", "global"];
   if (o?.kind === "settings") return ["settings", "global"];
+  if (o?.kind === "compare") return ["compare", "global"];
   return [ui.focusCtx, "global"];
 }
 

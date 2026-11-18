@@ -12,6 +12,7 @@ import {
   GROUP_TITLES, changeEntries, changeRows, changeSel, commitDiffEntries, commits, detail, laneRows, laneWidth, loadMoreLog,
   logDone, logError, logLoading, refreshChangeDiff, selectChange, selectCommit, selectedCommit, toggleCommitFile,
 } from "../state/git";
+import { historyMark } from "../state/compare";
 import { loadReview, review, reviewBase, reviewCounts, reviewEntries, reviewRows, reviewSel, selectReview } from "../state/review";
 import { setUi, ui } from "../state/ui";
 import { activeRepo, gitRoot, isFolderWs, repo, root, status } from "../state/workspace";
@@ -138,6 +139,11 @@ function CommitRow(props: { i: number; pad: number }): JSX.Element {
         >
           <span class="c-hash">{cm().hash.slice(0, 7)}</span>
           <span class="c-subj">{cm().subject}</span>
+          <Show when={historyMark()?.hash === cm().hash && historyMark()?.root === gitRoot()}>
+            <span class="ref mark" title="Segnato per il confronto: scegli un altro commit e apri il confronto affiancato">
+              confronto
+            </span>
+          </Show>
           <Show when={cm().isHead}>
             <span class="ref head" style={{ background: nodeColor() }}>
               HEAD

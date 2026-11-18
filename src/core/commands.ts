@@ -1,16 +1,19 @@
-import { api, isTauri, type Worktree } from "../api";
+import { api, isTauri, type Commit, type Worktree } from "../api";
 import { extendMarks, toggleMark } from "../lib/marks";
 import { dirname, displayWorktreePath } from "../lib/path";
 import { askConfirm, confirmRequest, resolveConfirm } from "../state/confirm";
 import { bufs, closeBuffer, currentEditor, dirtyBuffers, openFile, saveActive } from "../state/buffers";
 import {
-  closeOverlay, diffHandles, focusBottom, focusEditor, focusNext, focusTree, getActiveDiff, getFolderHandle, getHelpHandle,
+  closeOverlay, diffHandles, focusBottom, getCompareHandle, focusEditor, focusNext, focusTree, getActiveDiff, getFolderHandle, getHelpHandle,
   getPickerHandle, getRepoHandle, getSettingsHandle, focusRepos, listHandles, openOverlay, pickerQuery,
 } from "../state/focus";
 import { runUpdate } from "../state/updates";
 import { loadRepos, openProjectPicker } from "../state/projects";
-import { changeSel, refreshChangeDiff, reloadLog, commits } from "../state/git";
-import { markAllSeen, reviewSel, toggleFull, toggleSeen } from "../state/review";
+import { changeSel, refreshChangeDiff, reloadLog, commits, selectedCommit } from "../state/git";
+import { ago, markAllSeen, review, reviewFull, reviewRows, reviewSel, toggleFull, toggleSeen } from "../state/review";
+import {
+  EMPTY_TREE, closeCompare, compare, compareMove, comparePath, compareSwap, compareWhole, historyMark, openCompare, setCompareWhole, setHistoryMark,
+} from "../state/compare";
 import { invalidateRepoDirty, openWorktree } from "../state/activeRepo";
 import { toWorkspacePath } from "../lib/gitroot";
 import { switchRoot } from "../state/session";
@@ -217,6 +220,112 @@ def("changes.openFile", "Apri il file modificato", () => {
   const p = toWorkspacePath(repoPrefix(), sel.path);
   if (p === null) return flash("Il repository attivo è fuori dalla cartella aperta", true);
   void openFile(p, { focus: true });
+}, false);
+
+// ------------------------------------------------------------- side-by-side comparison
+
+const short = (h: string) => (h === EMPTY_TREE ? "vuoto" : h.slice(0, 7));
+const commitLabel = (c: Commit) => `${short(c.hash)} · ${c.subject}`;
+const labelOf = (hash: string) => {
+  const c = commits().find((x) => x.hash === hash);
+  return c ? commitLabel(c) : short(hash);
+};
+const WORKING_TREE = "albero di lavoro (modifiche attuali)";
+
+/** Git view the user is in: its list, its diff, else the bottom panel's tab. */
+function gitView(): "history" | "changes" | "review" {
+  const f = ui.focusCtx;
+  if (f === "history" || f === "changes" || f === "review") return f;
+  if (f === "diff") {
+    const d = getActiveDiff();
+    if (d === diffHandles.history) return "history";
+    if (d === diffHandles.review) return "review";
+    if (d === diffHandles.changes) return "changes";
+  }
+  return ui.bottomVisible ? ui.bottomTab : "changes";
+}
+
+/** Path under the cursor in a git diff (when the diff has focus), else null. */
+const diffPath = (view: "history" | "changes" | "review") =>
+  ui.focusCtx === "diff" && getActiveDiff() === diffHandles[view] ? (diffHandles[view]?.currentPath() ?? null) : null;
+
+function compareOpen(): void {
+  const r = gitRoot();
+  if (!r || !repo()?.isRepo) return flash("Nessun repository git");
+  const view = gitView();
+  if (view === "history") {
+    const c = commits()[selectedCommit()];
+    if (!c) return flash("Nessun commit selezionato");
+    const mark = historyMark();
+    const path = diffPath("history");
+    if (mark && mark.root === r && mark.hash !== c.hash) {
+      return void openCompare({ root: r, left: { rev: mark.hash, label: labelOf(mark.hash) }, right: { rev: c.hash, label: commitLabel(c) }, path });
+    }
+    const parent = c.parents[0] ?? EMPTY_TREE;
+    const left = { rev: parent, label: c.parents[0] ? `${labelOf(parent)} (prima)` : "nessun commit (prima del primo)" };
+    return void openCompare({ root: r, left, right: { rev: c.hash, label: commitLabel(c) }, path });
+  }
+  if (view === "review") {
+    const rv = review();
+    if (!rv?.info) return flash("La revisione non è ancora pronta");
+    const since: Record<string, { blob: string; label: string }> = {};
+    if (!reviewFull()) {
+      for (const row of reviewRows()) {
+        if (row.state === "changed" && row.seen?.blob) since[row.file!.path] = { blob: row.seen.blob, label: `versione vista ${ago(row.seen.at)}` };
+      }
+    }
+    const base = rv.info.baseCommit;
+    const left = { rev: base, label: base === EMPTY_TREE ? "nessun commit" : `${rv.base ?? "HEAD"} (${short(base)})` };
+    return void openCompare({ root: r, left, right: { rev: null, label: WORKING_TREE }, path: diffPath("review") ?? reviewSel(), since });
+  }
+  const head = repo()?.head;
+  const left = head ? { rev: head, label: `HEAD · ${labelOf(head)}` } : { rev: EMPTY_TREE, label: "nessun commit" };
+  void openCompare({ root: r, left, right: { rev: null, label: WORKING_TREE }, path: diffPath("changes") ?? changeSel()?.path ?? null });
+}
+
+def("compare.open", "Confronto affiancato (prima e dopo)", compareOpen);
+def("history.mark", "Segna il commit per confrontarlo con un altro", () => {
+  const r = gitRoot();
+  const c = commits()[selectedCommit()];
+  if (!r || !c) return flash("Nessun commit selezionato");
+  const m = historyMark();
+  if (m?.root === r && m.hash === c.hash) {
+    setHistoryMark(null);
+    return flash("Segno tolto");
+  }
+  setHistoryMark({ root: r, hash: c.hash });
+  const k = keyFor(KEYMAPS[ui.mode], "compare.open", ["history"]);
+  flash(`Segnato ${short(c.hash)}: scegli un altro commit${k ? ` e premi ${k}` : ""} per confrontarli`);
+}, false);
+def("history.compareWorktree", "Confronta il commit con le modifiche attuali", () => {
+  const r = gitRoot();
+  const c = commits()[selectedCommit()];
+  if (!r || !c) return flash("Nessun commit selezionato");
+  void openCompare({ root: r, left: { rev: c.hash, label: commitLabel(c) }, right: { rev: null, label: WORKING_TREE }, path: diffPath("history") });
+});
+
+def("compare.nextFile", "Confronto: file successivo", () => compareMove(1), false);
+def("compare.prevFile", "Confronto: file precedente", () => compareMove(-1), false);
+def("compare.nextChange", "Confronto: modifica successiva", () => getCompareHandle()?.nextChange(), false);
+def("compare.prevChange", "Confronto: modifica precedente", () => getCompareHandle()?.prevChange(), false);
+def("compare.down", "Confronto: scorre giù", () => getCompareHandle()?.scroll(1), false);
+def("compare.up", "Confronto: scorre su", () => getCompareHandle()?.scroll(-1), false);
+def("compare.pageDown", "Confronto: pagina giù", () => getCompareHandle()?.page(1), false);
+def("compare.pageUp", "Confronto: pagina su", () => getCompareHandle()?.page(-1), false);
+def("compare.whole", "Confronto: file intero / solo le modifiche", () => setCompareWhole(!compareWhole()), false);
+def("compare.swap", "Confronto: scambia i lati", () => compareSwap(), false);
+def("compare.close", "Chiudi il confronto", () => closeCompare(), false);
+def("compare.openFile", "Apri il file confrontato", () => {
+  const st = compare();
+  const f = comparePath();
+  if (!st || !f) return flash("Nessun file selezionato");
+  const onDisk = st.req.right.rev === null ? f.path : st.req.left.rev === null ? (f.origPath ?? f.path) : null;
+  const path = onDisk ?? f.path;
+  const p = toWorkspacePath(repoPrefix(), path);
+  if (p === null) return flash("Il repository attivo è fuori dalla cartella aperta", true);
+  closeCompare();
+  void openFile(p, { focus: true });
+  if (onDisk === null) flash("Aperta la versione attuale del file");
 }, false);
 
 // ------------------------------------------------------------- repository column (folder workspace)

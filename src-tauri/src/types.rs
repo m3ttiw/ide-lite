@@ -317,3 +317,12 @@ pub struct PrLookup {
     pub message: Option<String>,
     pub pr: Option<PullRequest>,
 }
+
+/// Whole content of one version of a file, for a side-by-side comparison.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileText {
+    /// text | missing (not in that version) | binary | tooLarge (over 5 MB)
+    pub kind: String,
+    pub text: Option<String>,
+}

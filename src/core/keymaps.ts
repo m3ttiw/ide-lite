@@ -10,6 +10,7 @@ export const CONTEXT_TITLES: Record<string, string> = {
   history: "Cronologia",
   changes: "Modifiche",
   review: "Revisione",
+  compare: "Confronto",
   repos: "Repository",
   diff: "Diff",
   picker: "Selettori",
@@ -90,6 +91,8 @@ const listKeys = (ctx: string, mode: Mode): Binding[] =>
     // folder workspace: back to the repository column
     ["<left>", "repos.focus"],
     ["q", "repos.focus"],
+    ["a", "compare.open"],
+    ...(ctx === "history" ? ([["m", "history.mark"], ["w", "history.compareWorktree"]] as [string, string][]) : []),
     ...(ctx === "changes" ? ([["o", "changes.openFile"]] as [string, string][]) : []),
     ...(ctx === "review"
       ? ([["o", "review.openFile"], ["v", "review.toggleSeen"], ["SPC", "review.toggleSeen"], ["b", "review.toggleFull"]] as [string, string][])
@@ -112,6 +115,28 @@ const repoKeys = (mode: Mode): Binding[] =>
     ["g", "repos.refresh"],
   ]);
 
+/** Side-by-side comparison screen. */
+const compareKeys = (mode: Mode): Binding[] =>
+  t("compare", [
+    ["n", "compare.nextFile"],
+    ["p", "compare.prevFile"],
+    ["SPC", "compare.nextChange"],
+    [".", "compare.nextChange"],
+    ["DEL", "compare.prevChange"],
+    [",", "compare.prevChange"],
+    ...(mode === "emacs"
+      ? ([["C-n", "compare.down"], ["C-p", "compare.up"], ["C-v", "compare.pageDown"], ["M-v", "compare.pageUp"]] as [string, string][])
+      : []),
+    ["<down>", "compare.down"],
+    ["<up>", "compare.up"],
+    ["<next>", "compare.pageDown"],
+    ["<prior>", "compare.pageUp"],
+    ["t", "compare.whole"],
+    ["s", "compare.swap"],
+    ["o", "compare.openFile"],
+    ["q", "compare.close"],
+  ]);
+
 const diffKeys = (mode: Mode): Binding[] =>
   t("diff", [
     ["n", "diff.nextFile"],
@@ -119,6 +144,7 @@ const diffKeys = (mode: Mode): Binding[] =>
     ["RET", "diff.toggleFile"],
     ["TAB", "diff.toggleFile"],
     ["q", "diff.back"],
+    ["a", "compare.open"],
     // review diff only (no-ops elsewhere)
     ["v", "review.toggleSeen"],
     ["b", "review.toggleFull"],
@@ -195,6 +221,7 @@ const EMACS: Binding[] = [
   ...listKeys("review", "emacs"),
   ...repoKeys("emacs"),
   ...diffKeys("emacs"),
+  ...compareKeys("emacs"),
   ...pickerCommon("emacs"),
 ];
 
@@ -244,6 +271,7 @@ const STANDARD: Binding[] = [
   ...listKeys("review", "standard"),
   ...repoKeys("standard"),
   ...diffKeys("standard"),
+  ...compareKeys("standard"),
   ...pickerCommon("standard"),
 ];
 
@@ -288,6 +316,9 @@ export const HINTS: Record<string, HintSpec[]> = {
   history: [
     h("scorre", "list.next", "list.prev"),
     h("vai al diff", "list.toDiff"),
+    h("affiancato", "compare.open"),
+    h("segna per confronto", "history.mark"),
+    h("con le modifiche attuali", "history.compareWorktree"),
     hf("repository", "repos.focus"),
     h("modifiche", "git.changes"),
     h("aggiorna", "git.refresh"),
@@ -297,6 +328,7 @@ export const HINTS: Record<string, HintSpec[]> = {
   changes: [
     h("scorre", "list.next", "list.prev"),
     h("vai al diff", "list.toDiff"),
+    h("affiancato", "compare.open"),
     h("apri file", "changes.openFile"),
     hf("repository", "repos.focus"),
     h("cronologia", "git.history"),
@@ -308,6 +340,7 @@ export const HINTS: Record<string, HintSpec[]> = {
     h("visto", "review.toggleSeen"),
     h("novità/tutto", "review.toggleFull"),
     h("vai al diff", "list.toDiff"),
+    h("affiancato", "compare.open"),
     h("apri file", "review.openFile"),
     hf("repository", "repos.focus"),
     h("aggiorna", "git.refresh"),
@@ -320,9 +353,18 @@ export const HINTS: Record<string, HintSpec[]> = {
     h("progetto", "project.pick"),
     h("altro pannello", "focus.next"),
   ],
+  compare: [
+    h("file", "compare.nextFile", "compare.prevFile"),
+    h("modifica succ./prec.", "compare.nextChange", "compare.prevChange"),
+    h("file intero", "compare.whole"),
+    h("scambia lati", "compare.swap"),
+    h("apri file", "compare.openFile"),
+    h("chiudi", "compare.close"),
+  ],
   "diff:review": [
     h("visto", "review.toggleSeen"),
     h("novità/tutto", "review.toggleFull"),
+    h("affiancato", "compare.open"),
     h("scorre", "diff.down", "diff.up"),
     h("torna all'elenco", "diff.back"),
     h("altro pannello", "focus.next"),

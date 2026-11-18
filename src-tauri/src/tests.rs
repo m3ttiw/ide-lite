@@ -1658,3 +1658,66 @@ fn only_https_links_are_opened() {
         assert!(pr::open_url(bad).is_err(), "{bad}");
     }
 }
+
+// ---------------------------------------------------------------- side-by-side comparison
+
+#[test]
+fn compare_two_commits_and_a_commit_with_the_working_tree() {
+    let (_tmp, dir, root) = new_repo();
+    write(&dir, "a.txt", "one\ntwo\n");
+    write(&dir, "gone.txt", "bye\n");
+    let first = commit_all(&dir, "first");
+    write(&dir, "a.txt", "one\nTWO\nthree\n");
+    std::fs::remove_file(dir.join("gone.txt")).unwrap();
+    write(&dir, "b.txt", "new\n");
+    let second = commit_all(&dir, "second");
+    write(&dir, "a.txt", "one\nTWO\nthree\nfour\n");
+    write(&dir, "wip.txt", "draft\n");
+
+    let files = review::compare_files(&root, &first, Some(&second)).unwrap();
+    let got: Vec<(&str, FileStatus, u32, u32)> = files.iter().map(|f| (f.path.as_str(), f.status, f.additions, f.deletions)).collect();
+    assert_eq!(
+        got,
+        [("a.txt", FileStatus::Modified, 2, 1), ("b.txt", FileStatus::Added, 1, 0), ("gone.txt", FileStatus::Deleted, 0, 1)]
+    );
+    assert!(files.iter().all(|f| f.blob.is_none()));
+
+    // against the working tree: uncommitted and untracked changes count too
+    let files = review::compare_files(&root, "HEAD", None).unwrap();
+    let got: Vec<(&str, FileStatus)> = files.iter().map(|f| (f.path.as_str(), f.status)).collect();
+    assert_eq!(got, [("a.txt", FileStatus::Modified), ("wip.txt", FileStatus::Untracked)]);
+
+    // the parent of a root commit is the empty tree
+    let files = review::compare_files(&root, review::EMPTY_TREE, Some(&first)).unwrap();
+    assert_eq!(files.len(), 2);
+
+    assert!(review::compare_files(&root, "--output=x", None).is_err());
+    assert!(review::compare_files(&root, "no-such-branch", None).is_err());
+}
+
+#[test]
+fn file_text_of_a_commit_a_blob_and_the_disk() {
+    let (_tmp, dir, root) = new_repo();
+    write(&dir, "a.txt", "old\n");
+    write(&dir, "bin.dat", b"\x00\x01\x02");
+    commit_all(&dir, "first");
+    write(&dir, "a.txt", "new\n");
+
+    let t = review::file_text(&root, Some("HEAD"), "a.txt").unwrap();
+    assert_eq!((t.kind.as_str(), t.text.as_deref()), ("text", Some("old\n")));
+    let t = review::file_text(&root, None, "a.txt").unwrap();
+    assert_eq!(t.text.as_deref(), Some("new\n"));
+    assert_eq!(review::file_text(&root, Some("HEAD"), "missing.txt").unwrap().kind, "missing");
+    assert_eq!(review::file_text(&root, None, "missing.txt").unwrap().kind, "missing");
+    assert_eq!(review::file_text(&root, Some(review::EMPTY_TREE), "a.txt").unwrap().kind, "missing");
+    assert_eq!(review::file_text(&root, Some("HEAD"), "bin.dat").unwrap().kind, "binary");
+
+    // a reviewed snapshot is read by its blob id, whatever the path
+    let id = review::mark_reviewed(&root, &["a.txt".to_string()]).unwrap().remove(0).expect("blob id");
+    write(&dir, "a.txt", "newer\n");
+    let t = review::file_text(&root, Some(&id), "a.txt").unwrap();
+    assert_eq!(t.text.as_deref(), Some("new\n"));
+
+    assert!(review::file_text(&root, Some("-p"), "a.txt").is_err());
+    assert!(review::file_text(&root, None, "../outside.txt").is_err());
+}

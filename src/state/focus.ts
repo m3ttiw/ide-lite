@@ -24,7 +24,19 @@ export interface DiffHandle {
   scroll(rows: number): void;
   page(dir: 1 | -1): void;
   focus(): void;
+  /** File under the cursor (the first one when none is current). */
+  currentPath(): string | null;
 }
+
+export interface CompareHandle {
+  nextChange(): void;
+  prevChange(): void;
+  scroll(lines: number): void;
+  page(dir: 1 | -1): void;
+}
+let compareHandle: CompareHandle | null = null;
+export const setCompareHandle = (h: CompareHandle | null) => (compareHandle = h);
+export const getCompareHandle = () => compareHandle;
 
 export const listHandles: Partial<Record<"history" | "changes" | "review", ListHandle>> = {};
 

@@ -82,6 +82,7 @@ export function DiffView(props: Props): JSX.Element {
     scroll: (n) => list?.scrollBy(n * ROW),
     page: (dir) => list?.scrollBy(dir * (list?.pageRows() ?? 10) * ROW),
     focus: () => el.focus(),
+    currentPath: () => props.entries()[cur()]?.path ?? props.entries()[0]?.path ?? null,
   };
   diffHandles[props.name] = handle;
 

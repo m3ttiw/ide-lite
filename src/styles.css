@@ -1194,6 +1194,168 @@ body.resizing-h * {
   background: rgba(124, 196, 232, 0.08);
 }
 
+/* ------------------------------------------------------------ side-by-side comparison */
+
+.body {
+  position: relative;
+}
+
+.compare {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.compare:focus {
+  outline: none;
+}
+
+.cmp-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.cmp-title {
+  font-weight: 600;
+}
+
+.cmp-side {
+  min-width: 0;
+  max-width: 34%;
+  padding: 2px 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.cmp-side.del {
+  background: rgba(240, 144, 144, 0.12);
+  color: #f1c4c4;
+}
+
+.cmp-side.add {
+  background: rgba(127, 209, 139, 0.12);
+  color: #cfe9d3;
+}
+
+.cmp-arrow {
+  color: var(--muted);
+}
+
+.cmp-push {
+  flex: 1 1 auto;
+}
+
+.cmp-btn {
+  flex: none;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--sel);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cmp-btn:hover {
+  border-color: var(--muted);
+}
+
+.cmp-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+.cmp-files {
+  flex: 0 0 clamp(200px, 22%, 320px);
+  min-width: 0;
+  overflow: auto;
+  border-right: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.cmp-file {
+  height: 26px;
+}
+
+.cmp-file .ch-dir {
+  flex: 1 1 auto;
+}
+
+.cmp-file.sel {
+  background: var(--sel-focus);
+}
+
+.cmp-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cmp-paths {
+  flex: none;
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.cmp-path {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 5px 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmp-path.del {
+  border-right: 1px solid var(--line);
+  color: #f1c4c4;
+}
+
+.cmp-path.add {
+  color: #cfe9d3;
+}
+
+.cmp-merge {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cmp-merge .cm-mergeView {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.cmp-merge .cm-mergeViewEditor + .cm-mergeViewEditor {
+  border-left: 1px solid var(--line);
+}
+
+.ref.mark {
+  color: var(--blue);
+  border-color: var(--blue);
+}
+
 /* ------------------------------------------------------------ virtual list */
 
 .vlist {

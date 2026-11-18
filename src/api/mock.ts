@@ -1023,6 +1023,26 @@ export const mockApi: Api = {
     };
   },
 
+  async compareFiles(root, from, to) {
+    if (to === null) return (await mockApi.reviewFiles(root, from)).files.map((f) => ({ ...f, blob: null }));
+    return (await mockApi.commitFiles(root, to)).map((f) => ({ ...f, blob: null }));
+  },
+
+  async fileText(root, rev, path) {
+    await latency(20, 80);
+    if (!worktreeOf(root)) throw "Non è un repository git";
+    const seen = rev === null ? undefined : snapshots.get(rev);
+    if (seen !== undefined) return { kind: "text", text: seen };
+    const f = repoFs.get(path);
+    if (rev === null) return f ? { kind: "text", text: fileText(f) } : { kind: "missing", text: null };
+    // a commit: the content before any edit made in this session
+    if (original.has(path)) {
+      const o = original.get(path);
+      return o === null || o === undefined ? { kind: "missing", text: null } : { kind: "text", text: o };
+    }
+    return f ? { kind: "text", text: fileText(f) } : { kind: "missing", text: null };
+  },
+
   async openUrl(url) {
     if (!url.startsWith("https://")) throw "only https links can be opened";
     window.open(url, "_blank", "noopener");

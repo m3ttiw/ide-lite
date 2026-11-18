@@ -214,7 +214,7 @@ function syncSelection(): void {
   selectReview(rows[0]?.file!.path ?? null);
 }
 
-const ago = (t: number) => {
+export const ago = (t: number) => {
   const s = Math.round((Date.now() - t) / 1000);
   if (s < 60) return "poco fa";
   const m = Math.round(s / 60);

@@ -11,7 +11,7 @@
 use crate::diff::{WORK_DIFF, check_hash, empty_diff, finish, not_repo_err, parse_raw_numstat, run_patch, untracked_diff};
 use crate::gitcmd::{self, Mode, nul_tokens, lossy};
 use crate::paths::{clean_rel, root_dir};
-use crate::types::{FileDiff, FileStatus, ReviewFile, ReviewInfo};
+use crate::types::{FileDiff, FileStatus, FileText, ReviewFile, ReviewInfo};
 use std::io::{BufRead, Read};
 use std::path::{Path, PathBuf};
 
@@ -106,14 +106,16 @@ fn hash_files(dir: &Path, paths: &[&str], write: bool) -> Vec<Option<String>> {
         .collect()
 }
 
-pub fn review_files(root: &str, base: Option<&str>) -> Result<ReviewInfo, String> {
-    let dir = toplevel(root)?;
-    let base_commit = base_commit(&dir, base)?;
-    let out = gitcmd::run_ok(
-        &dir,
-        Mode::Read,
-        &["diff", "--raw", "--numstat", "-z", "-M", "--no-ext-diff", "--no-textconv", "--no-relative", &base_commit, "--"],
-    )?;
+/// Files that differ between `from` and `to` (a commit), or between `from`
+/// and the working tree (untracked files included) when `to` is None.
+/// `blobs`: also hash each file on disk (working tree only).
+fn changed_files(dir: &Path, from: &str, to: Option<&str>, blobs: bool) -> Result<Vec<ReviewFile>, String> {
+    let mut args = vec!["diff", "--raw", "--numstat", "-z", "-M", "--no-ext-diff", "--no-textconv", "--no-relative", from];
+    if let Some(to) = to {
+        args.push(to);
+    }
+    args.push("--");
+    let out = gitcmd::run_ok(dir, Mode::Read, &args)?;
     let (raw, num) = parse_raw_numstat(&out.stdout);
     let mut files: Vec<ReviewFile> = raw
         .into_iter()
@@ -130,8 +132,11 @@ pub fn review_files(root: &str, base: Option<&str>) -> Result<ReviewInfo, String
             }
         })
         .collect();
+    if to.is_some() {
+        return Ok(files);
+    }
 
-    let others = gitcmd::run_ok(&dir, Mode::Read, &["ls-files", "-z", "--others", "--exclude-standard"])?;
+    let others = gitcmd::run_ok(dir, Mode::Read, &["ls-files", "-z", "--others", "--exclude-standard"])?;
     for tok in nul_tokens(&others.stdout) {
         let path = lossy(tok);
         // a nested repository is listed as "dir/" and not entered
@@ -143,13 +148,104 @@ pub fn review_files(root: &str, base: Option<&str>) -> Result<ReviewInfo, String
     }
     files.sort_by(|a, b| a.path.cmp(&b.path));
 
-    let present: Vec<usize> = (0..files.len()).filter(|i| files[*i].status != FileStatus::Deleted).collect();
-    let paths: Vec<&str> = present.iter().map(|i| files[*i].path.as_str()).collect();
-    let ids = hash_files(&dir, &paths, false);
-    for (i, id) in present.into_iter().zip(ids) {
-        files[i].blob = id;
+    if blobs {
+        let present: Vec<usize> = (0..files.len()).filter(|i| files[*i].status != FileStatus::Deleted).collect();
+        let paths: Vec<&str> = present.iter().map(|i| files[*i].path.as_str()).collect();
+        let ids = hash_files(dir, &paths, false);
+        for (i, id) in present.into_iter().zip(ids) {
+            files[i].blob = id;
+        }
     }
+    Ok(files)
+}
+
+pub fn review_files(root: &str, base: Option<&str>) -> Result<ReviewInfo, String> {
+    let dir = toplevel(root)?;
+    let base_commit = base_commit(&dir, base)?;
+    let files = changed_files(&dir, &base_commit, None, true)?;
     Ok(ReviewInfo { base_commit, files })
+}
+
+/// A commit given by the interface (hash, branch, "HEAD~1"…), or the empty tree.
+fn commit_id(dir: &Path, spec: &str) -> Result<String, String> {
+    let spec = spec.trim();
+    if spec == EMPTY_TREE {
+        return Ok(EMPTY_TREE.into());
+    }
+    if spec.is_empty() || spec.starts_with('-') {
+        return Err(format!("invalid revision: {spec:?}"));
+    }
+    let out = gitcmd::run(dir, Mode::Read, &["rev-parse", "--verify", "--quiet", &format!("{spec}^{{commit}}")])?;
+    if !out.ok() {
+        return Err(format!("unknown revision: {spec}"));
+    }
+    Ok(out.stdout_str().trim().to_string())
+}
+
+/// Files that differ between two commits, or between a commit and the working tree.
+pub fn compare_files(root: &str, from: &str, to: Option<&str>) -> Result<Vec<ReviewFile>, String> {
+    let dir = toplevel(root)?;
+    let from = commit_id(&dir, from)?;
+    let to = to.map(|t| commit_id(&dir, t)).transpose()?;
+    changed_files(&dir, &from, to.as_deref(), false)
+}
+
+/// Files over this size are not loaded for a side-by-side comparison.
+const MAX_TEXT: u64 = 5 * 1024 * 1024;
+
+fn text_of(bytes: Vec<u8>) -> FileText {
+    if bytes[..bytes.len().min(8000)].contains(&0) {
+        return FileText { kind: "binary".into(), text: None };
+    }
+    let text = match String::from_utf8(bytes) {
+        Ok(s) => s,
+        Err(e) => String::from_utf8_lossy(e.as_bytes()).into_owned(),
+    };
+    FileText { kind: "text".into(), text: Some(text) }
+}
+
+fn no_text(kind: &str) -> FileText {
+    FileText { kind: kind.into(), text: None }
+}
+
+/// Content of a file in a commit (`rev`), a blob (`rev` is its id), or on disk (`rev` None).
+pub fn file_text(root: &str, rev: Option<&str>, path: &str) -> Result<FileText, String> {
+    let dir = toplevel(root)?;
+    let rel = clean_rel(path)?;
+    if rel.is_empty() {
+        return Err("path is empty".into());
+    }
+    let Some(rev) = rev.map(str::trim) else {
+        let abs = dir.join(&rel);
+        let Ok(meta) = std::fs::metadata(&abs) else { return Ok(no_text("missing")) };
+        if !meta.is_file() {
+            return Ok(no_text("missing"));
+        }
+        if meta.len() > MAX_TEXT {
+            return Ok(no_text("tooLarge"));
+        }
+        return std::fs::read(&abs).map(text_of).map_err(|e| format!("{rel}: {e}"));
+    };
+    if rev == EMPTY_TREE {
+        return Ok(no_text("missing"));
+    }
+    if rev.is_empty() || rev.starts_with('-') {
+        return Err(format!("invalid revision: {rev:?}"));
+    }
+    let is_blob = check_hash(rev).is_ok() && {
+        let t = gitcmd::run(&dir, Mode::Read, &["cat-file", "-t", rev])?;
+        t.ok() && t.stdout_str().trim() == "blob"
+    };
+    let object = if is_blob { rev.to_string() } else { format!("{rev}:{rel}") };
+    let size = gitcmd::run(&dir, Mode::Read, &["cat-file", "-s", &object])?;
+    if !size.ok() {
+        return Ok(no_text("missing"));
+    }
+    if size.stdout_str().trim().parse::<u64>().unwrap_or(0) > MAX_TEXT {
+        return Ok(no_text("tooLarge"));
+    }
+    let out = gitcmd::run_ok(&dir, Mode::Read, &["cat-file", "blob", &object])?;
+    Ok(text_of(out.stdout))
 }
 
 /// Stores the current content of each file as a snapshot; returns its blob id

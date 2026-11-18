@@ -3,6 +3,7 @@ import { FloatingMessage, HintBar, Rail, StatusBar, TopBar } from "./components/
 import { EditorArea } from "./components/EditorArea";
 import { ConfirmDialog } from "./components/Confirm";
 import { BottomPanel } from "./components/GitPanel";
+import { CompareScreen } from "./components/Compare";
 import { confirmRequest } from "./state/confirm";
 import { HelpOverlay, PickerOverlay } from "./components/Overlays";
 import { Resizer } from "./components/Resizer";
@@ -67,12 +68,15 @@ export default function App(): JSX.Element {
             <BottomPanel />
           </Show>
         </main>
+        <Show when={ui.overlay?.kind === "compare"}>
+          <CompareScreen />
+        </Show>
       </div>
       <HintBar />
       <StatusBar />
       <FloatingMessage />
       <Show when={ui.overlay} keyed>
-        {(o) => (o.kind === "picker" ? <PickerOverlay kind={o.picker} /> : o.kind === "settings" ? <SettingsOverlay /> : <HelpOverlay />)}
+        {(o) => (o.kind === "picker" ? <PickerOverlay kind={o.picker} /> : o.kind === "settings" ? <SettingsOverlay /> : o.kind === "help" ? <HelpOverlay /> : null)}
       </Show>
       <Show when={confirmRequest()} keyed>
         {(r) => <ConfirmDialog spec={r} />}
