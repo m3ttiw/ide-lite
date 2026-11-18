@@ -12,6 +12,7 @@ import {
   GROUP_TITLES, changeEntries, changeRows, changeSel, commitDiffEntries, commits, detail, laneRows, laneWidth, loadMoreLog,
   logDone, logError, logLoading, refreshChangeDiff, selectChange, selectCommit, selectedCommit, toggleCommitFile,
 } from "../state/git";
+import { loadReview, review, reviewBase, reviewCounts, reviewEntries, reviewRows, reviewSel, selectReview } from "../state/review";
 import { setUi, ui } from "../state/ui";
 import { activeRepo, gitRoot, isFolderWs, repo, root, status } from "../state/workspace";
 import { baseRef, mainWorktree, wtStatus } from "../state/worktrees";
@@ -355,6 +356,159 @@ function Changes(): JSX.Element {
   );
 }
 
+// ------------------------------------------------------------- review
+
+const REVIEW_TITLES = { todo: "DA RIVEDERE", seen: "VISTI" } as const;
+/** Letter of a review row: an untracked file is new to the branch like an added one. */
+const reviewLetter = (s: string) => (s === "?" ? "A" : s);
+
+function Review(): JSX.Element {
+  let list: VirtualListApi | undefined;
+  const RH = 26;
+  const selIndex = () => {
+    const s = reviewSel();
+    return s ? reviewRows().findIndex((r) => r.kind === "file" && r.file!.path === s) : -1;
+  };
+
+  // reload when the tab is shown and whenever git state may have moved
+  createEffect(
+    on(
+      () => [ui.bottomVisible && ui.bottomTab === "review", gitRoot(), reviewBase(), status(), repo()?.head] as const,
+      ([visible]) => {
+        if (visible) void loadReview();
+      },
+    ),
+  );
+
+  const move = (d: number) => {
+    const rows = reviewRows();
+    let i = selIndex();
+    for (let k = 0; k < rows.length; k++) {
+      i += d;
+      if (i < 0 || i >= rows.length) return;
+      if (rows[i].kind === "file") break;
+    }
+    selectReview(rows[i].file!.path);
+    list?.scrollToIndex(i);
+  };
+  listHandles.review = { next: () => move(1), prev: () => move(-1), toDiff: () => diffHandles.review?.focus() };
+  // keep the selection on screen when marking moves it to the next file
+  createEffect(
+    on(selIndex, (i) => {
+      if (i >= 0) list?.scrollToIndex(i);
+    }),
+  );
+
+  const counts = reviewCounts;
+  const progress = () => {
+    const c = counts();
+    return c.total ? Math.round(((c.total - c.todo) / c.total) * 100) : 0;
+  };
+  const empty = () => {
+    const rv = review();
+    if (!repo()?.isRepo) return <NotRepo />;
+    if (rv?.error) return <div class="muted pad error-text">Revisione non disponibile: {rv.error}</div>;
+    if (!rv?.info) return <div class="muted pad">Caricamento…</div>;
+    return <div class="muted pad">Nessuna differenza rispetto a {rv.base ?? "HEAD"}: niente da rivedere.</div>;
+  };
+
+  return (
+    <div class="git-split">
+      <div
+        id="review-list"
+        class="commit-list review-list focusable"
+        tabindex="0"
+        role="listbox"
+        aria-label="File da rivedere"
+        aria-activedescendant={selIndex() >= 0 ? `review-${selIndex()}` : undefined}
+        data-ctx="review"
+        ref={(el) => registerRegion("review", el)}
+      >
+        <Show when={review()?.info && counts().total}>
+          <div class="rv-head">
+            <div class="rv-sum">
+              <span>
+                rispetto a <span class="accent">{review()?.base ?? "HEAD"}</span>
+              </span>
+              <span class="muted">
+                {counts().total === 1 ? "1 file" : `${counts().total} file`} · <span class="add">+{counts().additions}</span>{" "}
+                <span class="del">−{counts().deletions}</span>
+              </span>
+            </div>
+            <div class="rv-prog" title={`${counts().total - counts().todo} di ${counts().total} file visti`}>
+              <span class="rv-bar">
+                <span style={{ width: `${progress()}%` }} classList={{ done: !counts().todo }} />
+              </span>
+              <span class="muted small">{counts().todo ? `${counts().total - counts().todo}/${counts().total} visti` : "tutto visto"}</span>
+            </div>
+          </div>
+        </Show>
+        <Show when={reviewRows().length} fallback={empty()}>
+          <VirtualList
+            count={reviewRows().length}
+            rowHeight={RH}
+            ref={(a) => (list = a)}
+            row={(i) => {
+              const r = () => reviewRows()[i];
+              return (
+                <Show when={r()}>
+                  {(row) => (
+                    <Show
+                      when={row().kind === "file"}
+                      fallback={
+                        <div class="ch-head">
+                          {REVIEW_TITLES[row().group]} · {row().count}
+                        </div>
+                      }
+                    >
+                      <div
+                        id={`review-${i}`}
+                        role="option"
+                        aria-selected={selIndex() === i}
+                        class="ch-row rv-row"
+                        classList={{ sel: selIndex() === i, seen: row().state === "seen" }}
+                        title={row().file!.origPath ? `${row().file!.path} (da ${row().file!.origPath})` : row().file!.path}
+                        onClick={() => selectReview(row().file!.path)}
+                      >
+                        <span class={`badge ${STATUS_CLASS[reviewLetter(row().file!.status)] ?? ""}`}>{reviewLetter(row().file!.status)}</span>
+                        <span class="ch-name">{basename(row().file!.path)}</span>
+                        <Show when={row().state === "changed"}>
+                          <span class="rv-tag" title="Modificato di nuovo dopo che l'hai segnato come visto">
+                            ritoccato
+                          </span>
+                        </Show>
+                        <span class="ch-dir">{row().file!.origPath ? `da ${row().file!.origPath}` : dirname(row().file!.path)}</span>
+                        <span class="rv-stat">
+                          <Show when={!row().file!.binary} fallback={<span class="muted">bin</span>}>
+                            <span class="add">+{row().file!.additions}</span> <span class="del">−{row().file!.deletions}</span>
+                          </Show>
+                        </span>
+                        <span class="rv-check" aria-label={row().state === "seen" ? "visto" : undefined}>
+                          {row().state === "seen" ? "✓" : ""}
+                        </span>
+                      </div>
+                    </Show>
+                  )}
+                </Show>
+              );
+            }}
+          />
+        </Show>
+      </div>
+      <div class="detail">
+        <DiffView
+          name="review"
+          label="Diff in revisione"
+          entries={reviewEntries}
+          onToggle={() => {}}
+          onBack={() => document.getElementById("review-list")?.focus()}
+          empty={<div class="muted pad">Seleziona un file per vederne il diff.</div>}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ------------------------------------------------------------- repository column (folder workspace)
 
 const REPO_ROW = 40;
@@ -483,16 +637,18 @@ export function BottomPanel(): JSX.Element {
     const rel = s.ahead || s.behind ? `${parts.slice(1).join(" ")} rispetto a ${baseRef()}` : `allineato a ${baseRef()}`;
     return `${branch} · ${rel}`;
   };
-  const tab = (t: "history" | "changes", label: () => string) => (
+  const TAB_COMMANDS = { history: "git.history", changes: "git.changes", review: "git.review" } as const;
+  const tab = (t: keyof typeof TAB_COMMANDS, label: () => string, title?: string) => (
     <button
       type="button"
       role="tab"
       class="bp-tab"
       classList={{ active: ui.bottomTab === t }}
       aria-selected={ui.bottomTab === t}
+      title={title}
       onClick={() => {
         setUi("bottomTab", t);
-        runCommand(t === "history" ? "git.history" : "git.changes");
+        runCommand(TAB_COMMANDS[t]);
       }}
     >
       {label()}
@@ -503,6 +659,11 @@ export function BottomPanel(): JSX.Element {
       <div class="bp-bar" role="tablist" aria-label="Viste git">
         {tab("history", () => "Cronologia")}
         {tab("changes", () => `Modifiche · ${status().length}`)}
+        {tab(
+          "review",
+          () => (review()?.info ? `Revisione · ${reviewCounts().todo}` : "Revisione"),
+          "Tutto ciò che il branch cambia rispetto alla base: segna i file come visti",
+        )}
         <span class="bp-info">{info()}</span>
       </div>
       <div class="bp-body">
@@ -514,6 +675,9 @@ export function BottomPanel(): JSX.Element {
         </div>
         <div class="bp-page" style={{ display: ui.bottomTab === "changes" ? "flex" : "none" }}>
           <Changes />
+        </div>
+        <div class="bp-page" style={{ display: ui.bottomTab === "review" ? "flex" : "none" }}>
+          <Review />
         </div>
       </div>
     </section>

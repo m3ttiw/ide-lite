@@ -14,7 +14,7 @@ type Row =
   | { t: "note"; text: string; cls?: string };
 
 interface Props {
-  name: "history" | "changes";
+  name: "history" | "changes" | "review";
   entries: () => DiffEntry[];
   onToggle: (path: string) => void;
   onBack: () => void;
@@ -33,6 +33,7 @@ export function DiffView(props: Props): JSX.Element {
     props.entries().forEach((e, fi) => {
       out.push({ t: "file", e, fi });
       if (!e.open) return;
+      if (e.banner) out.push({ t: "note", text: e.banner, cls: "banner" });
       if (e.loading) return out.push({ t: "note", text: "Caricamento del diff…" });
       if (e.error) return out.push({ t: "note", text: `Diff non disponibile: ${e.error}`, cls: "error" });
       const d = e.diff;

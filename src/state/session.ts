@@ -4,6 +4,7 @@ import { normPath } from "../lib/path";
 import { openStartup } from "../lib/startup";
 import { bufs, dirtyBuffers, prefetchEditor, resetBuffers, restoreBuffers } from "./buffers";
 import { resetChanges, resetLog } from "./git";
+import { resetReview } from "./review";
 import { expandedList, loadDir, resetTree, restoreExpanded } from "./tree";
 import { errorText, flash, setUi, ui, type BottomTab } from "./ui";
 import { activeRepo, generation, nextGeneration, refreshRepo, refreshStatus, root, setActiveRepo, setRepo, setRoot, setStatus, setWsInfo } from "./workspace";
@@ -87,6 +88,7 @@ export async function openRoot(folder: string): Promise<void> {
     resetTree();
     resetLog();
     resetChanges();
+    resetReview();
     resetWorktrees();
     setStatus([]);
     setActiveRepo(null);
@@ -100,7 +102,7 @@ export async function openRoot(folder: string): Promise<void> {
     if (typeof s.sidebarWidth === "number") setUi("sidebarWidth", s.sidebarWidth);
     if (typeof s.bottomVisible === "boolean") setUi("bottomVisible", s.bottomVisible);
     if (typeof s.bottomHeight === "number") setUi("bottomHeight", s.bottomHeight);
-    if (s.bottomTab === "history" || s.bottomTab === "changes") setUi("bottomTab", s.bottomTab);
+    if (s.bottomTab === "history" || s.bottomTab === "changes" || s.bottomTab === "review") setUi("bottomTab", s.bottomTab);
   });
   // Folder workspace: the repository that was active last time (its git data loads on its own).
   if (!info.isRepo && typeof s.activeRepo === "string") void activateRepo(s.activeRepo, true);

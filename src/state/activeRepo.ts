@@ -6,6 +6,7 @@ import { api, type RepoEntry } from "../api";
 import { samePath } from "../lib/gitroot";
 import { normPath } from "../lib/path";
 import { resetChanges, resetLog } from "./git";
+import { resetReview } from "./review";
 import { repoScan } from "./projects";
 import { errorText, flash } from "./ui";
 import { activeRepo, generation, gitGeneration, isFolderWs, nextGitGeneration, refreshStatus, root, setActiveRepo, setRepo, setStatus, wsInfo } from "./workspace";
@@ -34,6 +35,7 @@ export async function activateRepo(path: string | null, quiet = false): Promise<
     setActiveRepo(p);
     resetLog();
     resetChanges();
+    resetReview();
     resetWorktrees();
     setStatus([]);
     setRepo(wsInfo());

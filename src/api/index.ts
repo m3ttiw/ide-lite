@@ -15,7 +15,7 @@ function load(): Promise<Api> {
 const METHODS = [
   "initialRoot", "launchFolder", "pickFolder", "repoInfo", "listDir", "listFiles", "readFile", "writeFile",
   "gitStatus", "gitLog", "commitFiles", "commitFileDiff", "workingFileDiff", "listWorktrees",
-  "worktreeStatus", "addWorktree", "removeWorktree", "findRepos", "browseDir",
+  "worktreeStatus", "addWorktree", "removeWorktree", "reviewFiles", "reviewFileDiff", "markReviewed", "findRepos", "browseDir",
   "updateState", "updateCheck", "updateInstall", "onUpdateState",
 ] as const satisfies readonly (keyof Api)[];
 

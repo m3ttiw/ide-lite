@@ -4,7 +4,7 @@ import type { Mode } from "../core/keymaps";
 
 export type PickerKind = "file" | "buffer" | "command" | "worktree" | "folder" | "project";
 export type Overlay = null | { kind: "picker"; picker: PickerKind } | { kind: "help" } | { kind: "settings" };
-export type BottomTab = "history" | "changes";
+export type BottomTab = "history" | "changes" | "review";
 
 const GLOBAL_KEY = "ide-lite:prefs";
 

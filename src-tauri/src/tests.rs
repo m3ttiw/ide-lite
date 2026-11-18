@@ -3,7 +3,7 @@
 
 use crate::paths::{canonical_slash, clean_rel, to_slash};
 use crate::types::*;
-use crate::{diff, fsops, git, repos, update, worktree};
+use crate::{diff, fsops, git, repos, review, update, worktree};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -233,6 +233,18 @@ fn contract_json_shapes() {
         &["path", "parent", "dirs"],
     );
     assert!(v["parent"].is_null());
+
+    let file = ReviewFile {
+        path: "p".into(),
+        orig_path: None,
+        status: FileStatus::Untracked,
+        additions: 1,
+        deletions: 0,
+        binary: false,
+        blob: None,
+    };
+    expect_keys(&file, &["path", "origPath", "status", "additions", "deletions", "binary", "blob"]);
+    expect_keys(&ReviewInfo { base_commit: "h".into(), files: vec![file] }, &["baseCommit", "files"]);
 }
 
 // ---------------------------------------------------------------- paths
@@ -1303,4 +1315,142 @@ fn update_progress_throttle() {
     assert!(t.should_emit(0, 1, None));
     assert!(!t.should_emit(50, 1_000_000, None), "unknown total: time based only");
     assert!(t.should_emit(150, 1_000_001, None));
+}
+
+// ---------------------------------------------------------------- review
+
+fn review_entry<'a>(info: &'a ReviewInfo, path: &str) -> &'a ReviewFile {
+    info.files.iter().find(|f| f.path == path).unwrap_or_else(|| panic!("{path} not in {:?}", info.files))
+}
+
+#[test]
+fn review_compares_the_branch_with_its_merge_base() {
+    let (_tmp, dir, root) = new_repo();
+    write(&dir, "keep.txt", "k
+");
+    write(&dir, "edit.txt", "one
+two
+");
+    write(&dir, "gone.txt", "g
+");
+    write(&dir, "old/name.txt", numbered_lines(20));
+    commit_all(&dir, "base");
+    g(&dir, &["checkout", "-q", "-b", "feature"]);
+    // committed on the branch
+    write(&dir, "edit.txt", "one
+TWO
+");
+    std::fs::create_dir_all(dir.join("new")).unwrap();
+    g(&dir, &["mv", "old/name.txt", "new/name.txt"]);
+    commit_all(&dir, "feature work");
+    // main moves on: its changes are not part of the review
+    g(&dir, &["checkout", "-q", "main"]);
+    write(&dir, "main-only.txt", "m
+");
+    commit_all(&dir, "main work");
+    g(&dir, &["checkout", "-q", "feature"]);
+    // not committed yet
+    write(&dir, "edit.txt", "one
+TWO
+three
+");
+    std::fs::remove_file(dir.join("gone.txt")).unwrap();
+    write(&dir, "fresh.txt", "a
+b
+c");
+    write(&dir, "sub/repo/.git/HEAD", "ref: refs/heads/main
+"); // looks like a nested repository
+
+    let info = review::review_files(&root, Some("main")).unwrap();
+    let base = g(&dir, &["merge-base", "HEAD", "main"]);
+    assert_eq!(info.base_commit, base);
+    let paths: Vec<&str> = info.files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, ["edit.txt", "fresh.txt", "gone.txt", "new/name.txt"], "{info:?}");
+
+    let edit = review_entry(&info, "edit.txt");
+    assert_eq!((edit.status, edit.additions, edit.deletions), (FileStatus::Modified, 2, 1));
+    assert_eq!(edit.blob.as_deref(), Some(g(&dir, &["hash-object", "edit.txt"]).as_str()));
+    let fresh = review_entry(&info, "fresh.txt");
+    assert_eq!((fresh.status, fresh.additions), (FileStatus::Untracked, 3));
+    let gone = review_entry(&info, "gone.txt");
+    assert_eq!((gone.status, gone.blob.clone()), (FileStatus::Deleted, None));
+    let moved = review_entry(&info, "new/name.txt");
+    assert_eq!((moved.status, moved.orig_path.as_deref()), (FileStatus::Renamed, Some("old/name.txt")));
+
+    // diffs against the base: committed and uncommitted together
+    let d = review::review_file_diff(&root, &info.base_commit, "edit.txt", None, None).unwrap();
+    let text: Vec<String> = all_lines(&d).iter().map(|l| format!("{:?} {}", l.kind, l.text)).collect();
+    assert_eq!(text, ["Ctx one", "Del two", "Add TWO", "Add three"]);
+    let d = review::review_file_diff(&root, &info.base_commit, "fresh.txt", None, None).unwrap();
+    assert_eq!((d.status, all_lines(&d).len()), (FileStatus::Untracked, 3));
+    let d = review::review_file_diff(&root, &info.base_commit, "new/name.txt", Some("old/name.txt"), None).unwrap();
+    assert_eq!((d.status, d.hunks.len()), (FileStatus::Renamed, 0));
+    let d = review::review_file_diff(&root, &info.base_commit, "gone.txt", None, None).unwrap();
+    assert_eq!(d.status, FileStatus::Deleted);
+
+    // without a base: only what is not committed
+    let head_only = review::review_files(&root, None).unwrap();
+    assert_eq!(head_only.base_commit, g(&dir, &["rev-parse", "HEAD"]));
+    let paths: Vec<&str> = head_only.files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, ["edit.txt", "fresh.txt", "gone.txt"]);
+
+    assert!(review::review_files(&root, Some("no-such-branch")).is_err());
+    assert!(review::review_files(&root, Some("--all")).is_err());
+}
+
+#[test]
+fn review_shows_only_what_changed_since_the_snapshot() {
+    let (_tmp, dir, root) = new_repo();
+    write(&dir, "a.txt", numbered_lines(10));
+    commit_all(&dir, "base");
+    write(&dir, "a.txt", numbered_lines(10).replace("line 2
+", "line two
+"));
+    write(&dir, "b.txt", "new
+");
+
+    let ids = review::mark_reviewed(&root, &["a.txt".into(), "b.txt".into(), "missing.txt".into()]).unwrap();
+    let a_seen = ids[0].clone().unwrap();
+    assert!(ids[1].is_some());
+    assert_eq!(ids[2], None);
+    let info = review::review_files(&root, None).unwrap();
+    assert_eq!(review_entry(&info, "a.txt").blob.as_deref(), Some(a_seen.as_str()), "unchanged since the snapshot");
+
+    // nothing new yet
+    let d = review::review_file_diff(&root, &info.base_commit, "a.txt", None, Some(&a_seen)).unwrap();
+    assert!(d.hunks.is_empty());
+
+    // the agent touches the file again: only that change shows
+    write(&dir, "a.txt", numbered_lines(10).replace("line 2
+", "line two
+").replace("line 9
+", "line nine
+"));
+    let d = review::review_file_diff(&root, &info.base_commit, "a.txt", None, Some(&a_seen)).unwrap();
+    let changed: Vec<String> = all_lines(&d).iter().filter(|l| l.kind != LineKind::Ctx).map(|l| format!("{:?} {}", l.kind, l.text)).collect();
+    assert_eq!(changed, ["Del line 9", "Add line nine"]);
+    assert_eq!(all_lines(&d).iter().find(|l| l.kind == LineKind::Add).unwrap().new_no, Some(9));
+
+    // deleted after the review
+    std::fs::remove_file(dir.join("b.txt")).unwrap();
+    let d = review::review_file_diff(&root, &info.base_commit, "b.txt", None, ids[1].as_deref()).unwrap();
+    assert_eq!(d.status, FileStatus::Deleted);
+    assert_eq!(all_lines(&d).iter().map(|l| l.text.as_str()).collect::<Vec<_>>(), ["new"]);
+
+    // a snapshot that no longer exists is an error, not a wrong diff
+    let missing = "0123456789abcdef0123456789abcdef01234567";
+    assert!(review::review_file_diff(&root, &info.base_commit, "a.txt", None, Some(missing)).is_err());
+    assert!(review::review_file_diff(&root, &info.base_commit, "a.txt", None, Some("HEAD")).is_err());
+}
+
+#[test]
+fn review_of_a_repository_without_commits() {
+    let (_tmp, dir, root) = new_repo();
+    write(&dir, "first.txt", "1
+");
+    let info = review::review_files(&root, Some("main")).unwrap();
+    assert_eq!(info.base_commit, review::EMPTY_TREE);
+    assert_eq!(info.files.len(), 1);
+    let d = review::review_file_diff(&root, &info.base_commit, "first.txt", None, None).unwrap();
+    assert_eq!(all_lines(&d).len(), 1);
 }

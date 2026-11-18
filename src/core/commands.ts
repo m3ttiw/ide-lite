@@ -10,6 +10,7 @@ import {
 import { runUpdate } from "../state/updates";
 import { loadRepos, openProjectPicker } from "../state/projects";
 import { changeSel, refreshChangeDiff, reloadLog, commits } from "../state/git";
+import { markAllSeen, reviewSel, toggleFull, toggleSeen } from "../state/review";
 import { invalidateRepoDirty, openWorktree } from "../state/activeRepo";
 import { toWorkspacePath } from "../lib/gitroot";
 import { switchRoot } from "../state/session";
@@ -70,6 +71,7 @@ def("focus.tree", "Vai ai file", () => focusTree());
 def("focus.editor", "Vai all'editor", () => focusEditor());
 def("git.history", "Cronologia git", () => focusBottom("history"));
 def("git.changes", "Modifiche", () => focusBottom("changes"));
+def("git.review", "Revisione del worktree", () => focusBottom("review"));
 def("worktree.pick", "Cerca worktree", () => {
   if (isFolderWs() && !activeRepo()) return flash("Scegli prima un repository dalla colonna Repository");
   if (!repo()?.isRepo) return flash("La cartella aperta non è un repository git");
@@ -84,7 +86,7 @@ def("folder.open", "Apri cartella con la finestra di sistema", async () => {
 });
 def("panel.toggleBottom", "Mostra/nascondi pannello in basso", () => {
   const hide = ui.bottomVisible;
-  const inside = ["history", "changes", "diff", "repos"].includes(ui.focusCtx);
+  const inside = ["history", "changes", "review", "diff", "repos"].includes(ui.focusCtx);
   setUi("bottomVisible", !hide);
   if (hide && inside) focusEditor();
 });
@@ -185,10 +187,29 @@ def("tree.collapse", "Comprimi / vai alla cartella superiore", () => {
 
 // ------------------------------------------------------------- lists and diffs
 
-const listCtx = () => (ui.focusCtx === "changes" ? "changes" : "history");
+const listCtx = () => (ui.focusCtx === "changes" || ui.focusCtx === "review" ? ui.focusCtx : "history");
 def("list.next", "Elemento successivo", () => listHandles[listCtx()]?.next(), false);
 def("list.prev", "Elemento precedente", () => listHandles[listCtx()]?.prev(), false);
 def("list.toDiff", "Vai al diff", () => listHandles[listCtx()]?.toDiff(), false);
+
+// ------------------------------------------------------------- review
+
+/** Review commands act from the review list or from its diff. */
+const inReview = () => ui.focusCtx === "review" || (ui.focusCtx === "diff" && getActiveDiff() === diffHandles.review);
+def("review.toggleSeen", "Segna come visto / da rivedere", () => {
+  if (inReview()) void toggleSeen();
+}, false);
+def("review.toggleFull", "Revisione: solo le novità / tutto rispetto alla base", () => {
+  if (inReview()) toggleFull();
+}, false);
+def("review.markAll", "Segna tutta la revisione come vista", () => void markAllSeen());
+def("review.openFile", "Apri il file in revisione", () => {
+  const path = reviewSel();
+  if (!path) return flash("Nessun file selezionato");
+  const p = toWorkspacePath(repoPrefix(), path);
+  if (p === null) return flash("Il repository attivo è fuori dalla cartella aperta", true);
+  void openFile(p, { focus: true });
+}, false);
 
 def("changes.openFile", "Apri il file modificato", () => {
   const sel = changeSel();

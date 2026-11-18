@@ -1106,6 +1106,94 @@ body.resizing-h * {
   color: var(--muted);
 }
 
+/* review tab */
+.review-list .rv-head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 14px 6px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--ui);
+  font-size: 12px;
+}
+
+.rv-sum {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 12px;
+}
+
+.rv-prog {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rv-bar {
+  flex: 1 1 auto;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.rv-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.rv-bar > span.done {
+  background: var(--green);
+}
+
+.rv-row .ch-dir {
+  flex: 1 1 auto;
+}
+
+.rv-row.seen .ch-name,
+.rv-row.seen .ch-dir,
+.rv-row.seen .badge,
+.rv-row.seen .rv-stat {
+  opacity: 0.5;
+}
+
+.rv-tag {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  font-family: var(--ui);
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--accent);
+}
+
+.rv-stat {
+  flex: none;
+  font-size: 11px;
+}
+
+.rv-check {
+  flex: none;
+  width: 12px;
+  color: var(--green);
+  text-align: center;
+}
+
+.error-text {
+  color: var(--red);
+}
+
+.d-note.banner {
+  font-style: normal;
+  color: var(--blue);
+  background: rgba(124, 196, 232, 0.08);
+}
+
 /* ------------------------------------------------------------ virtual list */
 
 .vlist {

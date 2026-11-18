@@ -9,6 +9,7 @@ mod git;
 mod gitcmd;
 mod paths;
 mod repos;
+mod review;
 mod types;
 mod update;
 mod update_tauri;
@@ -149,6 +150,21 @@ async fn remove_worktree(root: String, path: String, force: bool) -> Result<(), 
 }
 
 #[tauri::command]
+async fn review_files(root: String, base: Option<String>) -> Result<ReviewInfo, String> {
+    blocking(move || review::review_files(&root, base.as_deref())).await
+}
+
+#[tauri::command]
+async fn review_file_diff(root: String, base_commit: String, path: String, orig_path: Option<String>, since: Option<String>) -> Result<FileDiff, String> {
+    blocking(move || review::review_file_diff(&root, &base_commit, &path, orig_path.as_deref(), since.as_deref())).await
+}
+
+#[tauri::command]
+async fn mark_reviewed(root: String, paths: Vec<String>) -> Result<Vec<Option<String>>, String> {
+    blocking(move || review::mark_reviewed(&root, &paths)).await
+}
+
+#[tauri::command]
 async fn find_repos(root: String, max_depth: u32) -> Result<Vec<RepoEntry>, String> {
     blocking(move || repos::find_repos(&root, max_depth)).await
 }
@@ -230,6 +246,9 @@ pub fn run() {
             worktree_status,
             add_worktree,
             remove_worktree,
+            review_files,
+            review_file_diff,
+            mark_reviewed,
             find_repos,
             browse_dir,
             update_state,

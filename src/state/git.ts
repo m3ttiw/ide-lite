@@ -76,6 +76,8 @@ export interface DiffEntry {
   diff: FileDiff | null;
   loading: boolean;
   error: string | null;
+  /** Line shown under the file header (what the diff is compared with). */
+  banner?: string | null;
 }
 
 export const [selectedCommit, setSelectedCommit] = createSignal(-1);

@@ -5,6 +5,7 @@ import { CONTEXT_TITLES, HINTS, KEYMAPS, MODE_NAMES, keyFor } from "../core/keym
 import { continuations } from "../lib/keys";
 import { activeBuffer, activeLanguageName } from "../state/buffers";
 import { confirmRequest } from "../state/confirm";
+import { diffHandles, getActiveDiff } from "../state/focus";
 import { message, ui } from "../state/ui";
 import { folderRepos } from "../state/activeRepo";
 import { activeRepo, isFolderWs, projectName, repo, repoPrefix, root, status } from "../state/workspace";
@@ -74,7 +75,7 @@ export function Rail(): JSX.Element {
         aria-label="Cronologia git"
         title={`Cronologia git${keyOf("git.history") ? " (" + keyOf("git.history") + ")" : ""}`}
         aria-pressed={ui.bottomVisible}
-        onClick={() => runCommand(ui.bottomTab === "changes" ? "git.changes" : "git.history")}
+        onClick={() => runCommand(ui.bottomTab === "changes" ? "git.changes" : ui.bottomTab === "review" ? "git.review" : "git.history")}
       >
         <GitIcon />
       </button>
@@ -121,6 +122,7 @@ export function HintBar(): JSX.Element {
     if (o?.kind === "picker") return HINTS[`picker:${o.picker}`] ? `picker:${o.picker}` : "picker";
     if (o?.kind === "help") return "help";
     if (o?.kind === "settings") return "settings";
+    if (ui.focusCtx === "diff" && getActiveDiff() === diffHandles.review) return "diff:review";
     return HINTS[ui.focusCtx] ? ui.focusCtx : "global";
   };
   const chip = () => {

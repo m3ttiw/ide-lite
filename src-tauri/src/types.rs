@@ -210,3 +210,26 @@ pub struct WorktreeStatus {
     pub behind: u32,
     pub dirty: u32,
 }
+
+/// A file the reviewed worktree changes against its base.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewFile {
+    pub path: String,
+    pub orig_path: Option<String>,
+    pub status: FileStatus,
+    pub additions: u32,
+    pub deletions: u32,
+    pub binary: bool,
+    /// Blob id of the content on disk now; `None` for a deleted file.
+    pub blob: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewInfo {
+    /// What the files are compared with: the merge base of HEAD and the base
+    /// branch, HEAD itself without a base, the empty tree before any commit.
+    pub base_commit: String,
+    pub files: Vec<ReviewFile>,
+}

@@ -71,7 +71,7 @@ pub fn parse_raw_numstat(bytes: &[u8]) -> (Vec<RawEntry>, HashMap<String, NumSta
 }
 
 /// A commit id: hex only, so it can never be read as an option or a range.
-fn check_hash(hash: &str) -> Result<(), String> {
+pub(crate) fn check_hash(hash: &str) -> Result<(), String> {
     if (4..=64).contains(&hash.len()) && hash.bytes().all(|b| b.is_ascii_hexdigit()) {
         Ok(())
     } else {
@@ -266,23 +266,23 @@ pub fn parse_patch(r: &mut dyn BufRead, cap: usize) -> std::io::Result<(ParsedPa
     }
 }
 
-fn empty_diff(path: String, orig_path: Option<String>, status: FileStatus) -> FileDiff {
+pub(crate) fn empty_diff(path: String, orig_path: Option<String>, status: FileStatus) -> FileDiff {
     FileDiff { path, orig_path, status, binary: false, truncated: false, hunks: Vec::new() }
 }
 
 /// Runs a patch-producing git command and parses it.
-fn run_patch(dir: &Path, args: &[&str]) -> Result<Option<ParsedPatch>, String> {
+pub(crate) fn run_patch(dir: &Path, args: &[&str]) -> Result<Option<ParsedPatch>, String> {
     match gitcmd::stream(dir, args, |r| parse_patch(r, MAX_DIFF_LINES))? {
         Streamed::Done(p) => Ok(Some(p)),
         Streamed::NotRepo => Ok(None),
     }
 }
 
-fn not_repo_err() -> String {
+pub(crate) fn not_repo_err() -> String {
     "not a git repository".to_string()
 }
 
-fn finish(path: String, orig_path: Option<String>, status: FileStatus, p: ParsedPatch) -> FileDiff {
+pub(crate) fn finish(path: String, orig_path: Option<String>, status: FileStatus, p: ParsedPatch) -> FileDiff {
     FileDiff { path, orig_path, status, binary: p.binary, truncated: p.truncated, hunks: p.hunks }
 }
 
@@ -310,7 +310,7 @@ pub fn commit_file_diff(root: &str, hash: &str, path: &str) -> Result<FileDiff, 
 }
 
 /// Options shared by the porcelain `git diff` calls.
-const WORK_DIFF: [&str; 7] = ["-p", "-U3", "--no-ext-diff", "--no-textconv", "--no-color", "--no-relative", "-M"];
+pub(crate) const WORK_DIFF: [&str; 7] = ["-p", "-U3", "--no-ext-diff", "--no-textconv", "--no-color", "--no-relative", "-M"];
 
 pub fn working_file_diff(root: &str, path: &str, staged: bool) -> Result<FileDiff, String> {
     let (abs, rel) = resolve(root, path)?;

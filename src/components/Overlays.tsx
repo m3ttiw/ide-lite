@@ -721,7 +721,7 @@ export function PickerOverlay(props: { kind: PickerKind }): JSX.Element {
 
 // ------------------------------------------------------------- C-h
 
-const HELP_ORDER = ["global", "editor", "tree", "history", "changes", "repos", "diff", "picker", "picker:worktree", "picker:folder", "picker:project", "settings", "help"];
+const HELP_ORDER = ["global", "editor", "tree", "history", "changes", "review", "repos", "diff", "picker", "picker:worktree", "picker:folder", "picker:project", "settings", "help"];
 
 export function HelpOverlay(): JSX.Element {
   let box!: HTMLDivElement;

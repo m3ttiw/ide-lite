@@ -6,7 +6,7 @@ import { gitRoot } from "./workspace";
 // Focusable regions register themselves so commands can move focus.
 const regions: Record<string, HTMLElement | undefined> = {};
 
-export function registerRegion(name: "tree" | "editorPane" | "history" | "changes" | "repos", el: HTMLElement): void {
+export function registerRegion(name: "tree" | "editorPane" | "history" | "changes" | "review" | "repos", el: HTMLElement): void {
   regions[name] = el;
 }
 
@@ -26,7 +26,7 @@ export interface DiffHandle {
   focus(): void;
 }
 
-export const listHandles: Partial<Record<"history" | "changes", ListHandle>> = {};
+export const listHandles: Partial<Record<"history" | "changes" | "review", ListHandle>> = {};
 
 /** Repository column of the bottom panel (folder workspace). */
 export interface RepoColumnHandle {
@@ -46,7 +46,7 @@ export function focusRepos(): boolean {
   el.focus();
   return true;
 }
-export const diffHandles: Partial<Record<"history" | "changes", DiffHandle>> = {};
+export const diffHandles: Partial<Record<"history" | "changes" | "review", DiffHandle>> = {};
 let activeDiff: DiffHandle | null = null;
 export const setActiveDiff = (d: DiffHandle | null) => (activeDiff = d);
 export const getActiveDiff = () => activeDiff;
@@ -154,7 +154,7 @@ export function focusNext(): void {
   if (ui.sidebarVisible) order.push("tree");
   order.push("editor");
   if (ui.bottomVisible) order.push("bottom");
-  const cur = ui.focusCtx === "tree" ? "tree" : ui.focusCtx === "editor" ? "editor" : ["history", "changes", "diff", "repos"].includes(ui.focusCtx) ? "bottom" : null;
+  const cur = ui.focusCtx === "tree" ? "tree" : ui.focusCtx === "editor" ? "editor" : ["history", "changes", "review", "diff", "repos"].includes(ui.focusCtx) ? "bottom" : null;
   const i = cur ? order.indexOf(cur) : -1;
   const next = order[(i + 1) % order.length];
   if (next === "tree") regions.tree?.focus();

@@ -9,6 +9,7 @@ export const CONTEXT_TITLES: Record<string, string> = {
   tree: "File",
   history: "Cronologia",
   changes: "Modifiche",
+  review: "Revisione",
   repos: "Repository",
   diff: "Diff",
   picker: "Selettori",
@@ -90,6 +91,9 @@ const listKeys = (ctx: string, mode: Mode): Binding[] =>
     ["<left>", "repos.focus"],
     ["q", "repos.focus"],
     ...(ctx === "changes" ? ([["o", "changes.openFile"]] as [string, string][]) : []),
+    ...(ctx === "review"
+      ? ([["o", "review.openFile"], ["v", "review.toggleSeen"], ["SPC", "review.toggleSeen"], ["b", "review.toggleFull"]] as [string, string][])
+      : []),
   ]);
 
 /** Repository column of the bottom panel (folder workspace). */
@@ -115,6 +119,9 @@ const diffKeys = (mode: Mode): Binding[] =>
     ["RET", "diff.toggleFile"],
     ["TAB", "diff.toggleFile"],
     ["q", "diff.back"],
+    // review diff only (no-ops elsewhere)
+    ["v", "review.toggleSeen"],
+    ["b", "review.toggleFull"],
     ...(mode === "emacs"
       ? ([["C-n", "diff.down"], ["C-p", "diff.up"], ["C-v", "diff.pageDown"], ["M-v", "diff.pageUp"], ["<left>", "diff.back"]] as [string, string][])
       : ([["ESC", "diff.back"]] as [string, string][])),
@@ -133,6 +140,7 @@ const EMACS: Binding[] = [
     ["C-x o", "focus.next"],
     ["C-x g", "git.history"],
     ["C-x m", "git.changes"],
+    ["C-x r", "git.review"],
     ["C-x w", "worktree.pick"],
     ["C-x d", "folder.browse"],
     ["C-x p", "project.pick"],
@@ -184,6 +192,7 @@ const EMACS: Binding[] = [
   ]),
   ...listKeys("history", "emacs"),
   ...listKeys("changes", "emacs"),
+  ...listKeys("review", "emacs"),
   ...repoKeys("emacs"),
   ...diffKeys("emacs"),
   ...pickerCommon("emacs"),
@@ -198,6 +207,7 @@ const STANDARD: Binding[] = [
     ["C-S-p", "palette.open"],
     ["<f1>", "palette.open"],
     ["C-S-g", "git.history"],
+    ["C-S-r", "git.review"],
     ["C-S-w", "worktree.pick"],
     ["C-o", "folder.browse"],
     ["C-r", "project.pick"],
@@ -231,6 +241,7 @@ const STANDARD: Binding[] = [
   ]),
   ...listKeys("history", "standard"),
   ...listKeys("changes", "standard"),
+  ...listKeys("review", "standard"),
   ...repoKeys("standard"),
   ...diffKeys("standard"),
   ...pickerCommon("standard"),
@@ -292,12 +303,28 @@ export const HINTS: Record<string, HintSpec[]> = {
     h("aggiorna", "git.refresh"),
     h("altro pannello", "focus.next"),
   ],
+  review: [
+    h("scorre", "list.next", "list.prev"),
+    h("visto", "review.toggleSeen"),
+    h("novità/tutto", "review.toggleFull"),
+    h("vai al diff", "list.toDiff"),
+    h("apri file", "review.openFile"),
+    hf("repository", "repos.focus"),
+    h("aggiorna", "git.refresh"),
+  ],
   repos: [
     h("scorre", "repos.next", "repos.prev"),
     h("attiva", "repos.activate"),
     h("apri come cartella", "repos.openHere"),
     h("aggiorna", "repos.refresh"),
     h("progetto", "project.pick"),
+    h("altro pannello", "focus.next"),
+  ],
+  "diff:review": [
+    h("visto", "review.toggleSeen"),
+    h("novità/tutto", "review.toggleFull"),
+    h("scorre", "diff.down", "diff.up"),
+    h("torna all'elenco", "diff.back"),
     h("altro pannello", "focus.next"),
   ],
   diff: [

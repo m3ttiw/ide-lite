@@ -141,6 +141,27 @@ export interface Worktree {
   prunable: boolean;
 }
 
+/** A file the reviewed worktree changes against its base (committed or not). */
+export interface ReviewFile {
+  path: string;
+  origPath: string | null;
+  status: FileStatus;
+  additions: number;
+  deletions: number;
+  binary: boolean;
+  /** Blob id of the content on disk now; null for a deleted file. */
+  blob: string | null;
+}
+
+export interface ReviewInfo {
+  /**
+   * What the files are compared with: the merge base of HEAD and the base
+   * branch, HEAD itself without a base, the empty tree before any commit.
+   */
+  baseCommit: string;
+  files: ReviewFile[];
+}
+
 export interface WorktreeStatus {
   /** Commits on this worktree's HEAD that `base` does not have. */
   ahead: number;
@@ -275,6 +296,27 @@ export interface Api {
    * added lines.
    */
   workingFileDiff(root: string, path: string, staged: boolean): Promise<FileDiff>;
+
+  /**
+   * Every file the worktree at `root` changes against `base` (a branch or
+   * hash): committed on its branch since the merge base, staged, unstaged and
+   * untracked together, with the blob id of each file as it is on disk.
+   * `base` null compares with HEAD (uncommitted changes only).
+   */
+  reviewFiles(root: string, base: string | null): Promise<ReviewInfo>;
+
+  /**
+   * Diff of one file of the review: against `baseCommit`, or with `since` (a
+   * blob id from markReviewed) only what changed after that snapshot. Fails
+   * when the snapshot no longer exists.
+   */
+  reviewFileDiff(root: string, baseCommit: string, path: string, origPath: string | null, since: string | null): Promise<FileDiff>;
+
+  /**
+   * Stores the current content of each file as a reviewed snapshot; returns
+   * its blob id, or null for a file not on disk (reviewed as deleted).
+   */
+  markReviewed(root: string, paths: string[]): Promise<(string | null)[]>;
 
   /** All worktrees of the repository that contains `root`, main one first. */
   listWorktrees(root: string): Promise<Worktree[]>;

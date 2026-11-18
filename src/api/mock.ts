@@ -3,7 +3,7 @@
 
 import type {
   Api, Commit, CommitFile, CommitRef, DiffHunk, DiffLine, DirEntry, FileContent, FileDiff, FileStatus,
-  FolderEntry, FolderListing, RepoEntry, RepoInfo, StatusEntry, UpdateState, Worktree, WorktreeStatus,
+  FolderEntry, FolderListing, RepoEntry, RepoInfo, ReviewFile, StatusEntry, UpdateState, Worktree, WorktreeStatus,
 } from "./types";
 import * as D from "./mockData";
 
@@ -950,4 +950,49 @@ export const mockApi: Api = {
     if (!force && statusFor(path).length) throw `${path} contiene file modificati o non tracciati, usa --force per eliminarlo`;
     worktrees.splice(i, 1);
   },
+
+  async reviewFiles(root, _base) {
+    await latency(60, 160);
+    if (!worktreeOf(root)) throw "Non è un repository git";
+    const files: ReviewFile[] = [];
+    for (const s of statusFor(root)) {
+      const d = await mockApi.workingFileDiff(root, s.path, false);
+      let additions = 0;
+      let deletions = 0;
+      for (const h of d.hunks) for (const l of h.lines) l.kind === "add" ? additions++ : l.kind === "del" ? deletions++ : 0;
+      const status = (s.worktree ?? s.index ?? "M") as FileStatus;
+      files.push({ path: s.path, origPath: s.origPath, status, additions, deletions, binary: d.binary, blob: status === "D" ? null : blobOf(root, s.path) });
+    }
+    return { baseCommit: headOf(root) ?? "4b825dc642cb6eb9a060e54bf8d69288fbee4904", files };
+  },
+
+  async reviewFileDiff(root, _baseCommit, path, _origPath, since) {
+    await latency(30, 100);
+    const full = await mockApi.workingFileDiff(root, path, false);
+    if (!since) return full;
+    const seen = snapshots.get(since);
+    if (seen === undefined) throw "the reviewed version is no longer available";
+    const now = repoFs.get(path);
+    return lineDiff(splitLines(seen), now ? splitLines(fileText(now)) : [], path, now ? "M" : "D");
+  },
+
+  async markReviewed(root, paths) {
+    await latency(20, 60);
+    return paths.map((p) => {
+      const f = repoFs.get(p);
+      if (!f) return null;
+      const id = blobOf(root, p);
+      snapshots.set(id, fileText(f));
+      return id;
+    });
+  },
 };
+
+/** Contents marked as reviewed, by blob id. */
+const snapshots = new Map<string, string>();
+
+function blobOf(root: string, path: string): string {
+  const f = repoFs.get(path);
+  const text = f ? fileText(f) : "";
+  return (hashStr(root + "\0" + path + "\0" + text) >>> 0).toString(16).padStart(8, "0").repeat(5);
+}
