@@ -162,6 +162,68 @@ export interface ReviewInfo {
   files: ReviewFile[];
 }
 
+export type PrReviewerState = "approved" | "suggestions" | "changes" | "rejected" | "waiting" | "commented" | "pending";
+export type PrCheckState = "success" | "failure" | "pending" | "neutral" | "skipped";
+
+export interface PrReviewer {
+  name: string;
+  state: PrReviewerState;
+  required: boolean;
+}
+
+/** A check run, commit status or branch policy. */
+export interface PrCheck {
+  name: string;
+  state: PrCheckState;
+  url: string | null;
+  /** Blocks the merge (Azure DevOps blocking policies). */
+  required: boolean;
+}
+
+export interface PrComment {
+  /** Comments with the same thread id answer each other. */
+  thread: string;
+  /** File relative to the repository root; null for the general discussion. */
+  path: string | null;
+  line: number | null;
+  /** Line of the new version or of the old one. */
+  side: "new" | "old";
+  author: string;
+  body: string;
+  /** ISO 8601. */
+  at: string;
+  resolved: boolean;
+  /** Its line is no longer in the pull request diff. */
+  outdated: boolean;
+  url: string | null;
+}
+
+export interface PullRequest {
+  number: number;
+  title: string;
+  url: string;
+  state: "open" | "draft" | "merged" | "closed";
+  author: string | null;
+  sourceBranch: string;
+  targetBranch: string;
+  /** Local ref of the target branch ("origin/main"), null when missing here. */
+  baseRef: string | null;
+  headCommit: string | null;
+  reviewers: PrReviewer[];
+  checks: PrCheck[];
+  comments: PrComment[];
+}
+
+export interface PrLookup {
+  status: "found" | "none" | "detached" | "noremote" | "unsupported" | "auth" | "error";
+  provider: "github" | "azure" | null;
+  branch: string | null;
+  repoUrl: string | null;
+  /** Technical detail (English) for auth / error; the host for unsupported. */
+  message: string | null;
+  pr: PullRequest | null;
+}
+
 export interface WorktreeStatus {
   /** Commits on this worktree's HEAD that `base` does not have. */
   ahead: number;
@@ -317,6 +379,15 @@ export interface Api {
    * its blob id, or null for a file not on disk (reviewed as deleted).
    */
   markReviewed(root: string, paths: string[]): Promise<(string | null)[]>;
+
+  /**
+   * Pull request of the branch checked out in `root`, from the remote it
+   * tracks (GitHub or Azure DevOps), with the credentials git already has.
+   * Never fails for "no pull request" or a missing login: see PrLookup.status.
+   */
+  pullRequest(root: string): Promise<PrLookup>;
+  /** Opens an https link in the default browser. */
+  openUrl(url: string): Promise<void>;
 
   /** All worktrees of the repository that contains `root`, main one first. */
   listWorktrees(root: string): Promise<Worktree[]>;

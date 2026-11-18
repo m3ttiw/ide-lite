@@ -23,6 +23,10 @@ tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-updater = "2"
+# Both already in the tree through tauri-plugin-updater (same versions and
+# features): pull request lookups on GitHub and Azure DevOps.
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "system-proxy"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 # Already in the tree through tauri-runtime-wry; used to turn off WebView2's
 # browser accelerator keys (Tauri exposes no option for it).

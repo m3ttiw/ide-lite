@@ -3,7 +3,7 @@
 
 use crate::paths::{canonical_slash, clean_rel, to_slash};
 use crate::types::*;
-use crate::{diff, fsops, git, repos, review, update, worktree};
+use crate::{diff, fsops, git, pr, repos, review, update, worktree};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -245,6 +245,43 @@ fn contract_json_shapes() {
     };
     expect_keys(&file, &["path", "origPath", "status", "additions", "deletions", "binary", "blob"]);
     expect_keys(&ReviewInfo { base_commit: "h".into(), files: vec![file] }, &["baseCommit", "files"]);
+    let pull = PullRequest {
+        number: 1,
+        title: "t".into(),
+        url: "u".into(),
+        state: "open".into(),
+        author: None,
+        source_branch: "s".into(),
+        target_branch: "t".into(),
+        base_ref: None,
+        head_commit: None,
+        reviewers: vec![PrReviewer { name: "n".into(), state: "approved".into(), required: false }],
+        checks: vec![PrCheck { name: "n".into(), state: "success".into(), url: None, required: false }],
+        comments: vec![PrComment {
+            thread: "1".into(),
+            path: None,
+            line: None,
+            side: "new".into(),
+            author: "a".into(),
+            body: "b".into(),
+            at: "d".into(),
+            resolved: false,
+            outdated: false,
+            url: None,
+        }],
+    };
+    let v = expect_keys(
+        &PrLookup { status: "found".into(), provider: None, branch: None, repo_url: None, message: None, pr: Some(pull) },
+        &["status", "provider", "branch", "repoUrl", "message", "pr"],
+    );
+    let p = &v["pr"];
+    expect_keys(
+        p,
+        &["number", "title", "url", "state", "author", "sourceBranch", "targetBranch", "baseRef", "headCommit", "reviewers", "checks", "comments"],
+    );
+    expect_keys(&p["reviewers"][0], &["name", "state", "required"]);
+    expect_keys(&p["checks"][0], &["name", "state", "url", "required"]);
+    expect_keys(&p["comments"][0], &["thread", "path", "line", "side", "author", "body", "at", "resolved", "outdated", "url"]);
 }
 
 // ---------------------------------------------------------------- paths
@@ -1453,4 +1490,171 @@ fn review_of_a_repository_without_commits() {
     assert_eq!(info.files.len(), 1);
     let d = review::review_file_diff(&root, &info.base_commit, "first.txt", None, None).unwrap();
     assert_eq!(all_lines(&d).len(), 1);
+}
+
+// ---------------------------------------------------------------- pull requests
+
+#[test]
+fn remotes_of_github_and_azure_devops_are_recognised() {
+    use pr::Remote;
+    let gh = |owner: &str, repo: &str| Remote::GitHub {
+        api: "https://api.github.com".into(),
+        web: "https://github.com".into(),
+        owner: owner.into(),
+        repo: repo.into(),
+    };
+    let az = |base: &str, project: &str, repo: &str| Remote::Azure { base: base.into(), project: project.into(), repo: repo.into() };
+    for (url, want) in [
+        ("https://github.com/m3ttiw/ide-lite.git", gh("m3ttiw", "ide-lite")),
+        ("https://user:secret@github.com/m3ttiw/ide-lite", gh("m3ttiw", "ide-lite")),
+        ("git@github.com:m3ttiw/ide-lite.git", gh("m3ttiw", "ide-lite")),
+        ("ssh://git@ssh.github.com:443/m3ttiw/ide-lite.git", gh("m3ttiw", "ide-lite")),
+        ("https://acme@dev.azure.com/acme/My%20Project/_git/web-app", az("https://dev.azure.com/acme", "My%20Project", "web-app")),
+        ("https://dev.azure.com/acme/_git/solo", az("https://dev.azure.com/acme", "solo", "solo")),
+        ("git@ssh.dev.azure.com:v3/acme/Proj/web-app", az("https://dev.azure.com/acme", "Proj", "web-app")),
+        ("acme@vs-ssh.visualstudio.com:v3/acme/Proj/web-app", az("https://dev.azure.com/acme", "Proj", "web-app")),
+        ("https://acme.visualstudio.com/DefaultCollection/Proj/_git/web-app", az("https://acme.visualstudio.com", "Proj", "web-app")),
+        ("https://acme.visualstudio.com/_git/web-app", az("https://acme.visualstudio.com", "web-app", "web-app")),
+    ] {
+        assert_eq!(pr::parse_remote(url), Some(want), "{url}");
+    }
+    let ghe = pr::parse_remote("https://github.acme.com/team/tool.git").unwrap();
+    assert_eq!(
+        ghe,
+        Remote::GitHub { api: "https://github.acme.com/api/v3".into(), web: "https://github.acme.com".into(), owner: "team".into(), repo: "tool".into() }
+    );
+    assert_eq!(ghe.web_url(), "https://github.acme.com/team/tool");
+    for url in ["https://gitlab.com/a/b.git", "https://github.com/onlyowner", "C:/repos/local", "/srv/git/x.git", "https://dev.azure.com/acme/Proj"] {
+        assert_eq!(pr::parse_remote(url), None, "{url}");
+    }
+}
+
+#[test]
+fn github_pull_request_reviews_checks_and_comments() {
+    let list = serde_json::json!([
+        { "number": 7, "state": "closed", "merged_at": null, "html_url": "https://github.com/o/r/pull/7", "head": {"ref": "feat", "sha": "aaa"}, "base": {"ref": "main"} },
+        { "number": 9, "state": "open", "draft": true, "merged_at": null, "title": "Nuova vista", "html_url": "https://github.com/o/r/pull/9",
+          "user": {"login": "ann"}, "head": {"ref": "feat", "sha": "bbb"}, "base": {"ref": "main"},
+          "requested_reviewers": [{"login": "bob"}], "requested_teams": [{"name": "core"}] }
+    ]);
+    let p = pr::github_pick(&list).unwrap();
+    let pull = pr::github_pr(p).unwrap();
+    assert_eq!((pull.number, pull.state.as_str(), pull.title.as_str()), (9, "draft", "Nuova vista"));
+    assert_eq!((pull.source_branch.as_str(), pull.target_branch.as_str(), pull.head_commit.as_deref()), ("feat", "main", Some("bbb")));
+
+    let reviews = serde_json::json!([
+        {"user": {"login": "bob"}, "state": "CHANGES_REQUESTED"},
+        {"user": {"login": "cy"}, "state": "COMMENTED"},
+        {"user": {"login": "dee"}, "state": "APPROVED"},
+        {"user": {"login": "dee"}, "state": "COMMENTED"},
+    ]);
+    let r = pr::github_reviewers(p, &reviews);
+    let states: Vec<(&str, &str)> = r.iter().map(|x| (x.name.as_str(), x.state.as_str())).collect();
+    // bob was asked again after requesting changes
+    assert_eq!(states, [("bob", "pending"), ("cy", "commented"), ("dee", "approved"), ("core", "pending")]);
+
+    let runs = serde_json::json!({ "check_runs": [
+        {"name": "build", "status": "completed", "conclusion": "success", "html_url": "https://x/1"},
+        {"name": "lint", "status": "completed", "conclusion": "failure"},
+        {"name": "e2e", "status": "in_progress", "conclusion": null},
+    ]});
+    let statuses = serde_json::json!({ "statuses": [{"context": "ci/legacy", "state": "error", "target_url": "https://x/2"}] });
+    let checks = pr::github_checks(&runs, &statuses);
+    let c: Vec<(&str, &str)> = checks.iter().map(|c| (c.name.as_str(), c.state.as_str())).collect();
+    assert_eq!(c, [("build", "success"), ("lint", "failure"), ("e2e", "pending"), ("ci/legacy", "failure")]);
+
+    let comments = pr::github_comments(&[
+        serde_json::json!({"id": 1, "path": "src/a.ts", "line": 12, "side": "RIGHT", "body": "  perche?  ", "user": {"login": "bob"}, "created_at": "2026-11-01T10:00:00Z"}),
+        serde_json::json!({"id": 2, "in_reply_to_id": 1, "path": "src/a.ts", "line": 12, "side": "RIGHT", "body": "ok", "user": {"login": "ann"}}),
+        serde_json::json!({"id": 3, "path": "src/b.ts", "line": null, "original_line": 4, "side": "LEFT", "body": "vecchio", "user": {"login": "cy"}}),
+    ]);
+    assert_eq!(comments.len(), 3);
+    assert_eq!((comments[0].thread.as_str(), comments[0].body.as_str(), comments[0].line), ("1", "perche?", Some(12)));
+    assert_eq!(comments[1].thread, "1");
+    assert_eq!((comments[2].side.as_str(), comments[2].line, comments[2].outdated), ("old", Some(4), true));
+}
+
+#[test]
+fn azure_devops_pull_request_policies_and_threads() {
+    let list = serde_json::json!({ "value": [
+        { "pullRequestId": 3, "status": "abandoned", "sourceRefName": "refs/heads/feat", "targetRefName": "refs/heads/develop" },
+        { "pullRequestId": 41, "status": "active", "isDraft": false, "title": "Login", "createdBy": {"displayName": "Ann"},
+          "sourceRefName": "refs/heads/feat", "targetRefName": "refs/heads/develop",
+          "lastMergeSourceCommit": {"commitId": "ccc"}, "repository": {"project": {"id": "p-1"}},
+          "reviewers": [
+            {"displayName": "Bob", "vote": 10, "isRequired": true},
+            {"displayName": "Cy", "vote": -5},
+            {"displayName": "Proj Team", "vote": 0},
+          ] }
+    ]});
+    let p = pr::azure_pick(&list).unwrap();
+    let web = "https://dev.azure.com/acme/Proj/_git/app";
+    let pull = pr::azure_pr(p, web).unwrap();
+    assert_eq!((pull.number, pull.state.as_str()), (41, "open"));
+    assert_eq!(pull.url, "https://dev.azure.com/acme/Proj/_git/app/pullrequest/41");
+    assert_eq!((pull.source_branch.as_str(), pull.target_branch.as_str()), ("feat", "develop"));
+    let r: Vec<(&str, &str, bool)> = pull.reviewers.iter().map(|x| (x.name.as_str(), x.state.as_str(), x.required)).collect();
+    assert_eq!(r, [("Bob", "approved", true), ("Cy", "waiting", false), ("Proj Team", "pending", false)]);
+
+    let evals = serde_json::json!({ "value": [
+        {"status": "approved", "configuration": {"isEnabled": true, "isBlocking": true, "type": {"displayName": "Minimum number of reviewers"}}},
+        {"status": "running", "context": {"buildId": 99}, "configuration": {"isEnabled": true, "isBlocking": true, "type": {"displayName": "Build"}, "settings": {"displayName": "CI frontend"}}},
+        {"status": "rejected", "configuration": {"isEnabled": true, "isBlocking": false, "type": {"displayName": "Work item linking"}}},
+        {"status": "approved", "configuration": {"isEnabled": false, "type": {"displayName": "Off"}}},
+    ]});
+    let checks = pr::azure_checks(&evals, "https://dev.azure.com/acme", "Proj");
+    let c: Vec<(&str, &str, bool)> = checks.iter().map(|x| (x.name.as_str(), x.state.as_str(), x.required)).collect();
+    assert_eq!(c, [("Minimum number of reviewers", "success", true), ("CI frontend", "pending", true), ("Work item linking", "failure", false)]);
+    assert_eq!(checks[1].url.as_deref(), Some("https://dev.azure.com/acme/Proj/_build/results?buildId=99"));
+
+    let threads = serde_json::json!({ "value": [
+        {"id": 5, "status": "active", "threadContext": {"filePath": "/src/login.ts", "rightFileStart": {"line": 20, "offset": 1}},
+         "comments": [
+            {"commentType": "text", "author": {"displayName": "Bob"}, "content": "Manca il controllo", "publishedDate": "2026-11-02T09:00:00Z"},
+            {"commentType": "text", "author": {"displayName": "Ann"}, "content": "Fatto"},
+         ]},
+        {"id": 6, "status": "fixed", "threadContext": {"filePath": "/src/old.ts", "leftFileStart": {"line": 3}},
+         "comments": [{"commentType": "text", "author": {"displayName": "Cy"}, "content": "via"}]},
+        {"id": 7, "comments": [{"commentType": "system", "content": "Bob voted 10"}]},
+        {"id": 8, "status": "active", "comments": [{"commentType": "text", "author": {"displayName": "Cy"}, "content": "In generale ok"}]},
+        {"id": 9, "isDeleted": true, "comments": [{"commentType": "text", "content": "x"}]},
+    ]});
+    let cm = pr::azure_comments(&threads, &pull.url);
+    type Row<'a> = (&'a str, Option<&'a str>, Option<u32>, &'a str, bool);
+    let got: Vec<Row> = cm.iter().map(|c| (c.thread.as_str(), c.path.as_deref(), c.line, c.side.as_str(), c.resolved)).collect();
+    assert_eq!(
+        got,
+        [
+            ("5", Some("src/login.ts"), Some(20), "new", false),
+            ("5", Some("src/login.ts"), Some(20), "new", false),
+            ("6", Some("src/old.ts"), Some(3), "old", true),
+            ("8", None, None, "new", false),
+        ]
+    );
+    assert_eq!(cm[0].url.as_deref(), Some("https://dev.azure.com/acme/Proj/_git/app/pullrequest/41?discussionId=5"));
+}
+
+#[test]
+fn pull_request_lookup_without_a_known_remote() {
+    let (_tmp, dir, root) = new_repo();
+    write(&dir, "a.txt", "a\n");
+    commit_all(&dir, "first");
+    let run = |root: &str| tauri::async_runtime::block_on(pr::pull_request(root.to_string())).unwrap();
+
+    let l = run(&root);
+    assert_eq!((l.status.as_str(), l.branch.as_deref()), ("noremote", Some("main")));
+
+    g(&dir, &["remote", "add", "origin", "https://gitlab.com/acme/app.git"]);
+    let l = run(&root);
+    assert_eq!((l.status.as_str(), l.message.as_deref()), ("unsupported", Some("gitlab.com")));
+
+    g(&dir, &["checkout", "-q", "--detach"]);
+    assert_eq!(run(&root).status, "detached");
+}
+
+#[test]
+fn only_https_links_are_opened() {
+    for bad in ["http://example.com", "file:///C:/Windows/System32/calc.exe", "https://x.com/a b", "https://x.com/\"&calc", "javascript:alert(1)"] {
+        assert!(pr::open_url(bad).is_err(), "{bad}");
+    }
 }

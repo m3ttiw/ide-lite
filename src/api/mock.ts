@@ -976,6 +976,58 @@ export const mockApi: Api = {
     return lineDiff(splitLines(seen), now ? splitLines(fileText(now)) : [], path, now ? "M" : "D");
   },
 
+  async pullRequest(root) {
+    await latency(150, 400);
+    const wt = worktreeOf(root);
+    if (!wt?.branch || wt.isMain) return { status: "none", provider: "github", branch: wt?.branch ?? null, repoUrl: "https://github.com/demo/app", message: null, pr: null };
+    const files = statusFor(root).map((s) => s.path);
+    return {
+      status: "found",
+      provider: "github",
+      branch: wt.branch,
+      repoUrl: "https://github.com/demo/app",
+      message: null,
+      pr: {
+        number: 42,
+        title: `Lavoro su ${wt.branch}`,
+        url: "https://github.com/demo/app/pull/42",
+        state: "open",
+        author: "agent",
+        sourceBranch: wt.branch,
+        targetBranch: "main",
+        baseRef: "main",
+        headCommit: null,
+        reviewers: [
+          { name: "ann", state: "approved", required: false },
+          { name: "bob", state: "changes", required: false },
+          { name: "core", state: "pending", required: false },
+        ],
+        checks: [
+          { name: "build", state: "success", url: "https://github.com/demo/app/actions/runs/1", required: false },
+          { name: "test", state: "failure", url: "https://github.com/demo/app/actions/runs/2", required: false },
+          { name: "lint", state: "pending", url: null, required: false },
+        ],
+        comments: files.slice(0, 2).map((path, i) => ({
+          thread: String(i + 1),
+          path,
+          line: 2,
+          side: "new" as const,
+          author: "bob",
+          body: i ? "Questo nome non mi convince." : "Serve davvero?\nPotremmo riusare la funzione esistente.",
+          at: new Date(Date.now() - 3600_000).toISOString(),
+          resolved: false,
+          outdated: false,
+          url: "https://github.com/demo/app/pull/42#discussion_r1",
+        })),
+      },
+    };
+  },
+
+  async openUrl(url) {
+    if (!url.startsWith("https://")) throw "only https links can be opened";
+    window.open(url, "_blank", "noopener");
+  },
+
   async markReviewed(root, paths) {
     await latency(20, 60);
     return paths.map((p) => {

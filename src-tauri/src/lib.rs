@@ -8,6 +8,7 @@ mod fsops;
 mod git;
 mod gitcmd;
 mod paths;
+mod pr;
 mod repos;
 mod review;
 mod types;
@@ -165,6 +166,16 @@ async fn mark_reviewed(root: String, paths: Vec<String>) -> Result<Vec<Option<St
 }
 
 #[tauri::command]
+async fn pull_request(root: String) -> Result<PrLookup, String> {
+    pr::pull_request(root).await
+}
+
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    pr::open_url(&url)
+}
+
+#[tauri::command]
 async fn find_repos(root: String, max_depth: u32) -> Result<Vec<RepoEntry>, String> {
     blocking(move || repos::find_repos(&root, max_depth)).await
 }
@@ -249,6 +260,8 @@ pub fn run() {
             review_files,
             review_file_diff,
             mark_reviewed,
+            pull_request,
+            open_url,
             find_repos,
             browse_dir,
             update_state,

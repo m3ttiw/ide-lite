@@ -233,3 +233,87 @@ pub struct ReviewInfo {
     pub base_commit: String,
     pub files: Vec<ReviewFile>,
 }
+
+/// Someone asked to review a pull request, with where their review stands.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrReviewer {
+    pub name: String,
+    /// approved | suggestions (approved with suggestions) | changes (changes
+    /// requested) | rejected | waiting (waiting for the author) | commented | pending
+    pub state: String,
+    pub required: bool,
+}
+
+/// A check run, commit status or branch policy of a pull request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrCheck {
+    pub name: String,
+    /// success | failure | pending | neutral | skipped
+    pub state: String,
+    pub url: Option<String>,
+    /// Blocks the merge (Azure DevOps blocking policies; unknown on GitHub: false).
+    pub required: bool,
+}
+
+/// One comment of a pull request discussion.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrComment {
+    /// Comments with the same thread id answer each other.
+    pub thread: String,
+    /// File the thread is on, relative to the repository root; None for the
+    /// general discussion.
+    pub path: Option<String>,
+    pub line: Option<u32>,
+    /// "new" (line of the new version) or "old" (line of the old version).
+    pub side: String,
+    pub author: String,
+    pub body: String,
+    /// ISO 8601 date.
+    pub at: String,
+    pub resolved: bool,
+    /// The line it was written on is no longer in the pull request diff.
+    pub outdated: bool,
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequest {
+    pub number: u64,
+    pub title: String,
+    /// Web page of the pull request.
+    pub url: String,
+    /// open | draft | merged | closed
+    pub state: String,
+    pub author: Option<String>,
+    pub source_branch: String,
+    pub target_branch: String,
+    /// Local ref of the target branch ("origin/main", or "main" without a
+    /// remote-tracking branch); None when neither exists here.
+    pub base_ref: Option<String>,
+    pub head_commit: Option<String>,
+    pub reviewers: Vec<PrReviewer>,
+    pub checks: Vec<PrCheck>,
+    pub comments: Vec<PrComment>,
+}
+
+/// Pull request of the current branch, or why there is none to show.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrLookup {
+    /// found | none (no pull request for the branch) | detached (no branch) |
+    /// noremote | unsupported (remote is not GitHub or Azure DevOps) |
+    /// auth (no credentials, or rejected) | error
+    pub status: String,
+    /// github | azure
+    pub provider: Option<String>,
+    pub branch: Option<String>,
+    /// Web page of the repository.
+    pub repo_url: Option<String>,
+    /// Technical detail (English) for auth and error.
+    pub message: Option<String>,
+    pub pr: Option<PullRequest>,
+}

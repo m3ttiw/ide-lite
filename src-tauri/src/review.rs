@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 pub const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 /// Top folder of the worktree that contains `root`: every path here is relative to it.
-fn toplevel(root: &str) -> Result<PathBuf, String> {
+pub(crate) fn toplevel(root: &str) -> Result<PathBuf, String> {
     let dir = root_dir(root)?;
     let out = gitcmd::run(&dir, Mode::Read, &["rev-parse", "--show-toplevel"])?;
     if out.not_repo() {
