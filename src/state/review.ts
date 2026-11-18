@@ -3,6 +3,7 @@ import { api, type FileDiff, type FileStatus, type ReviewFile, type ReviewInfo }
 import type { DiffEntry } from "./git";
 import { errorText, flash } from "./ui";
 import { gitGeneration as generation, gitRoot as root } from "./workspace";
+import { prBaseRef, prComments } from "./pr";
 import { baseRef } from "./worktrees";
 
 // ------------------------------------------------------------- what has been seen
@@ -79,8 +80,8 @@ export interface ReviewRow {
 const [review, setReview] = createSignal<{ root: string; base: string | null; info: ReviewInfo | null; error: string | null; loading: boolean } | null>(null);
 export { review };
 
-/** Branch the worktree is compared with: the main worktree's branch for now. */
-export const reviewBase = () => baseRef();
+/** Branch the worktree is compared with: the target of its pull request, else the main worktree's branch. */
+export const reviewBase = () => prBaseRef() ?? baseRef();
 
 let loadSeq = 0;
 
@@ -255,6 +256,7 @@ export const reviewEntries = createRoot(() =>
         loading: d.loading,
         error: d.error,
         banner,
+        comments: prComments().get(f.path) ?? [],
       },
     ];
   }),

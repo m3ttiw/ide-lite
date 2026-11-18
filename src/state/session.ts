@@ -4,6 +4,7 @@ import { normPath } from "../lib/path";
 import { openStartup } from "../lib/startup";
 import { bufs, dirtyBuffers, prefetchEditor, resetBuffers, restoreBuffers } from "./buffers";
 import { resetChanges, resetLog } from "./git";
+import { resetPr } from "./pr";
 import { resetReview } from "./review";
 import { expandedList, loadDir, resetTree, restoreExpanded } from "./tree";
 import { errorText, flash, setUi, ui, type BottomTab } from "./ui";
@@ -89,6 +90,7 @@ export async function openRoot(folder: string): Promise<void> {
     resetLog();
     resetChanges();
     resetReview();
+    resetPr();
     resetWorktrees();
     setStatus([]);
     setActiveRepo(null);

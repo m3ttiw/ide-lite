@@ -95,7 +95,7 @@ const listKeys = (ctx: string, mode: Mode): Binding[] =>
     ...(ctx === "history" ? ([["m", "history.mark"], ["w", "history.compareWorktree"]] as [string, string][]) : []),
     ...(ctx === "changes" ? ([["o", "changes.openFile"]] as [string, string][]) : []),
     ...(ctx === "review"
-      ? ([["o", "review.openFile"], ["v", "review.toggleSeen"], ["SPC", "review.toggleSeen"], ["b", "review.toggleFull"]] as [string, string][])
+      ? ([["o", "review.openFile"], ["v", "review.toggleSeen"], ["SPC", "review.toggleSeen"], ["b", "review.toggleFull"], ["w", "review.openPr"]] as [string, string][])
       : []),
   ]);
 
@@ -147,6 +147,7 @@ const diffKeys = (mode: Mode): Binding[] =>
     ["a", "compare.open"],
     // review diff only (no-ops elsewhere)
     ["v", "review.toggleSeen"],
+    ["w", "review.openPr"],
     ["b", "review.toggleFull"],
     ...(mode === "emacs"
       ? ([["C-n", "diff.down"], ["C-p", "diff.up"], ["C-v", "diff.pageDown"], ["M-v", "diff.pageUp"], ["<left>", "diff.back"]] as [string, string][])
@@ -342,6 +343,7 @@ export const HINTS: Record<string, HintSpec[]> = {
     h("vai al diff", "list.toDiff"),
     h("affiancato", "compare.open"),
     h("apri file", "review.openFile"),
+    h("pull request", "review.openPr"),
     hf("repository", "repos.focus"),
     h("aggiorna", "git.refresh"),
   ],

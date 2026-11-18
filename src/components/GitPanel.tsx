@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, type JSX } from "solid-js";
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, type JSX } from "solid-js";
 import type { Commit } from "../api";
 import { runCommand } from "../core/commands";
 import { edgesBetween } from "../lib/lanes";
@@ -13,6 +13,7 @@ import {
   logDone, logError, logLoading, refreshChangeDiff, selectChange, selectCommit, selectedCommit, toggleCommitFile,
 } from "../state/git";
 import { historyMark } from "../state/compare";
+import { loadPr, newPrUrl, openLink, openThreads, pr, prComments, prLookup } from "../state/pr";
 import { loadReview, review, reviewBase, reviewCounts, reviewEntries, reviewRows, reviewSel, selectReview } from "../state/review";
 import { setUi, ui } from "../state/ui";
 import { activeRepo, gitRoot, isFolderWs, repo, root, status } from "../state/workspace";
@@ -365,6 +366,139 @@ function Changes(): JSX.Element {
 // ------------------------------------------------------------- review
 
 const REVIEW_TITLES = { todo: "DA RIVEDERE", seen: "VISTI" } as const;
+
+const PR_STATE: Record<string, string> = { open: "aperta", draft: "bozza", merged: "unita", closed: "chiusa" };
+const REVIEWER: Record<string, { mark: string; cls: string; text: string }> = {
+  approved: { mark: "✓", cls: "ok", text: "ha approvato" },
+  suggestions: { mark: "✓", cls: "warn", text: "ha approvato con suggerimenti" },
+  changes: { mark: "✗", cls: "bad", text: "chiede modifiche" },
+  rejected: { mark: "✗", cls: "bad", text: "ha rifiutato" },
+  waiting: { mark: "…", cls: "warn", text: "aspetta l'autore" },
+  commented: { mark: "•", cls: "", text: "ha commentato" },
+  pending: { mark: "○", cls: "", text: "non ha ancora rivisto" },
+};
+const CHECK: Record<string, { mark: string; cls: string; text: string }> = {
+  success: { mark: "✓", cls: "ok", text: "riuscito" },
+  failure: { mark: "✗", cls: "bad", text: "fallito" },
+  pending: { mark: "●", cls: "warn", text: "in corso" },
+  neutral: { mark: "–", cls: "", text: "neutro" },
+  skipped: { mark: "–", cls: "", text: "saltato" },
+};
+const PROVIDER: Record<string, string> = { github: "GitHub", azure: "Azure DevOps" };
+
+/** Pull request of the branch: state, reviewers and checks, or why there is none. */
+function PrBlock(): JSX.Element {
+  const l = prLookup;
+  const checks = () => {
+    const list = l()?.pr?.checks ?? [];
+    const ok = list.filter((c) => c.state === "success").length;
+    const bad = list.filter((c) => c.state === "failure");
+    const running = list.filter((c) => c.state === "pending").length;
+    return { list, ok, bad, running, cls: bad.length ? "bad" : running ? "warn" : "ok" };
+  };
+  const wKey = () => keyOf("review.openPr", ["review"]);
+  return (
+    <Show when={l()} fallback={<Show when={pr()?.loading}><div class="rv-pr muted small">Cerco la pull request…</div></Show>}>
+      {(lk) => (
+        <Switch>
+          <Match when={lk().pr}>
+            {(p) => (
+              <div class="rv-pr">
+                <div class="rv-pr-line">
+                  <button type="button" class="rv-pr-link" title={`Apri su ${PROVIDER[lk().provider ?? ""] ?? "web"}${wKey() ? ` (${wKey()})` : ""}`} onClick={() => void openLink(p().url)}>
+                    PR #{p().number}
+                  </button>
+                  <span class={`rv-pr-state ${p().state}`}>{PR_STATE[p().state] ?? p().state}</span>
+                  <span class="rv-pr-title" title={p().title}>
+                    {p().title}
+                  </span>
+                </div>
+                <div class="rv-pr-line chips">
+                  <For each={p().reviewers}>
+                    {(r) => (
+                      <span class={`rv-chip ${REVIEWER[r.state]?.cls ?? ""}`} title={`${r.name} ${REVIEWER[r.state]?.text ?? r.state}${r.required ? " (obbligatorio)" : ""}`}>
+                        {REVIEWER[r.state]?.mark ?? "?"} {r.name}
+                      </span>
+                    )}
+                  </For>
+                  <Show when={checks().list.length}>
+                    <span
+                      class={`rv-chip ${checks().cls}`}
+                      title={checks()
+                        .list.map((c) => `${CHECK[c.state]?.mark ?? "?"} ${c.name}: ${CHECK[c.state]?.text ?? c.state}${c.required ? " (obbligatorio)" : ""}`)
+                        .join("\n")}
+                    >
+                      controlli {checks().ok}/{checks().list.length}
+                      <Show when={checks().running}> · {checks().running} in corso</Show>
+                    </span>
+                    <For each={checks().bad}>
+                      {(c) => (
+                        <button type="button" class="rv-chip bad" title={c.url ? "Apri il dettaglio" : c.name} onClick={() => void openLink(c.url)}>
+                          ✗ {c.name}
+                        </button>
+                      )}
+                    </For>
+                  </Show>
+                  <Show when={prComments().get("")?.length}>
+                    {(n) => <span class="rv-chip" title="Commenti generali della pull request (fuori dai file)">{n()} commenti generali</span>}
+                  </Show>
+                  <Show when={lk().message}>
+                    {(m) => (
+                      <span class="rv-chip warn" title={m()}>
+                        ⚠ dettagli incompleti
+                      </span>
+                    )}
+                  </Show>
+                </div>
+              </div>
+            )}
+          </Match>
+          <Match when={lk().status === "none"}>
+            <div class="rv-pr muted small">
+              Nessuna pull request per {lk().branch} su {PROVIDER[lk().provider ?? ""] ?? "remote"}
+              <Show when={newPrUrl(lk())}>
+                {(u) => (
+                  <>
+                    {" · "}
+                    <button type="button" class="rv-pr-link" onClick={() => void openLink(u())}>
+                      creala
+                    </button>
+                  </>
+                )}
+              </Show>
+            </div>
+          </Match>
+          <Match when={lk().status === "auth"}>
+            <div class="rv-pr small warn-text" title={lk().message ?? ""}>
+              Pull request: nessun accesso a {PROVIDER[lk().provider ?? ""] ?? "remote"}.{" "}
+              {lk().provider === "azure" ? "Accedi con git (Git Credential Manager) o con az login." : "Accedi con git (Git Credential Manager) o con gh auth login."}
+            </div>
+          </Match>
+          <Match when={lk().status === "error"}>
+            <div class="rv-pr small error-text" title={lk().message ?? ""}>
+              Pull request non disponibile: {lk().message}
+            </div>
+          </Match>
+        </Switch>
+      )}
+    </Show>
+  );
+}
+
+/** Open discussion threads of the pull request on a file. */
+function CommentCount(props: { path: string }): JSX.Element {
+  const n = () => openThreads(props.path);
+  return (
+    <Show when={n()}>
+      <span class="rv-cm" title={n() === 1 ? "1 discussione aperta nella pull request" : `${n()} discussioni aperte nella pull request`}>
+        <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+          <path d="M2 3.5A1.5 1.5 0 0 1 3.5 2h9A1.5 1.5 0 0 1 14 3.5v6a1.5 1.5 0 0 1-1.5 1.5H7l-3 3v-3h-.5A1.5 1.5 0 0 1 2 9.5z" fill="currentColor" />
+        </svg>
+        {n()}
+      </span>
+    </Show>
+  );
+}
 /** Letter of a review row: an untracked file is new to the branch like an added one. */
 const reviewLetter = (s: string) => (s === "?" ? "A" : s);
 
@@ -381,7 +515,9 @@ function Review(): JSX.Element {
     on(
       () => [ui.bottomVisible && ui.bottomTab === "review", gitRoot(), reviewBase(), status(), repo()?.head] as const,
       ([visible]) => {
-        if (visible) void loadReview();
+        if (!visible) return;
+        void loadReview();
+        void loadPr();
       },
     ),
   );
@@ -449,6 +585,7 @@ function Review(): JSX.Element {
             </div>
           </div>
         </Show>
+        <PrBlock />
         <Show when={reviewRows().length} fallback={empty()}>
           <VirtualList
             count={reviewRows().length}
@@ -484,6 +621,7 @@ function Review(): JSX.Element {
                           </span>
                         </Show>
                         <span class="ch-dir">{row().file!.origPath ? `da ${row().file!.origPath}` : dirname(row().file!.path)}</span>
+                        <CommentCount path={row().file!.path} />
                         <span class="rv-stat">
                           <Show when={!row().file!.binary} fallback={<span class="muted">bin</span>}>
                             <span class="add">+{row().file!.additions}</span> <span class="del">−{row().file!.deletions}</span>

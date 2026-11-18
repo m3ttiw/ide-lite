@@ -313,7 +313,8 @@ pub struct PrLookup {
     pub branch: Option<String>,
     /// Web page of the repository.
     pub repo_url: Option<String>,
-    /// Technical detail (English) for auth and error.
+    /// Technical detail (English) for auth and error; for found, the details
+    /// that could not be read (checks, comments…).
     pub message: Option<String>,
     pub pr: Option<PullRequest>,
 }

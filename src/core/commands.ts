@@ -10,6 +10,7 @@ import {
 import { runUpdate } from "../state/updates";
 import { loadRepos, openProjectPicker } from "../state/projects";
 import { changeSel, refreshChangeDiff, reloadLog, commits, selectedCommit } from "../state/git";
+import { loadPr, newPrUrl, openLink, prLookup } from "../state/pr";
 import { ago, markAllSeen, review, reviewFull, reviewRows, reviewSel, toggleFull, toggleSeen } from "../state/review";
 import {
   EMPTY_TREE, closeCompare, compare, compareMove, comparePath, compareSwap, compareWhole, historyMark, openCompare, setCompareWhole, setHistoryMark,
@@ -133,6 +134,7 @@ def("app.quit", "Esci", async () => {
 });
 def("git.refresh", "Aggiorna stato git", () => {
   void refreshStatus().then(refreshChangeDiff);
+  if (ui.bottomVisible && ui.bottomTab === "review") void loadPr(true);
   void refreshRepo();
   invalidateWtStatuses();
   invalidateRepoDirty();
@@ -206,6 +208,17 @@ def("review.toggleFull", "Revisione: solo le novità / tutto rispetto alla base"
   if (inReview()) toggleFull();
 }, false);
 def("review.markAll", "Segna tutta la revisione come vista", () => void markAllSeen());
+def("review.openPr", "Apri la pull request nel browser", () => {
+  const l = prLookup();
+  if (!l) return flash("Pull request non ancora cercata: apri la scheda Revisione");
+  if (l.pr) return void openLink(l.pr.url);
+  const url = l.status === "none" ? newPrUrl(l) : null;
+  if (url) {
+    flash("Nessuna pull request per il branch: apro la pagina per crearla");
+    return void openLink(url);
+  }
+  flash("Nessuna pull request da aprire");
+});
 def("review.openFile", "Apri il file in revisione", () => {
   const path = reviewSel();
   if (!path) return flash("Nessun file selezionato");

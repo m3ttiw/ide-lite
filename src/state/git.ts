@@ -1,5 +1,5 @@
 import { createMemo, createRoot, createSignal } from "solid-js";
-import { api, type Commit, type CommitFile, type FileDiff, type FileStatus, type StatusEntry } from "../api";
+import { api, type Commit, type CommitFile, type FileDiff, type FileStatus, type PrComment, type StatusEntry } from "../api";
 import { LaneBuilder } from "../lib/lanes";
 import { errorText, flash } from "./ui";
 import { gitGeneration as generation, gitRoot as root, repo, status } from "./workspace";
@@ -78,6 +78,8 @@ export interface DiffEntry {
   error: string | null;
   /** Line shown under the file header (what the diff is compared with). */
   banner?: string | null;
+  /** Pull request comments on this file, shown under the lines they are on. */
+  comments?: PrComment[];
 }
 
 export const [selectedCommit, setSelectedCommit] = createSignal(-1);

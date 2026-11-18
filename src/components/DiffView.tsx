@@ -1,5 +1,6 @@
 import { Match, Show, Switch, createEffect, createMemo, createSignal, on, type JSX } from "solid-js";
-import type { DiffLine } from "../api";
+import { api, type DiffLine, type PrComment } from "../api";
+import { relativeDate } from "../lib/reldate";
 import { diffHandles, setActiveDiff, type DiffHandle } from "../state/focus";
 import type { DiffEntry } from "../state/git";
 import { STATUS_CLASS } from "./common";
@@ -11,7 +12,36 @@ type Row =
   | { t: "file"; e: DiffEntry; fi: number }
   | { t: "hunk"; text: string }
   | { t: "line"; l: DiffLine }
-  | { t: "note"; text: string; cls?: string };
+  | { t: "note"; text: string; cls?: string }
+  | { t: "comment"; text: string; head: boolean; reply: boolean; resolved: boolean; url: string | null };
+
+/** Body lines shown per comment; the rest is on the pull request page. */
+const MAX_COMMENT_LINES = 8;
+
+function threadsOf(comments: PrComment[]): PrComment[][] {
+  const m = new Map<string, PrComment[]>();
+  for (const c of comments) {
+    const t = m.get(c.thread);
+    if (t) t.push(c);
+    else m.set(c.thread, [c]);
+  }
+  return [...m.values()];
+}
+
+function commentRows(thread: PrComment[], where?: string): Row[] {
+  const out: Row[] = [];
+  const resolved = thread[0].resolved;
+  thread.forEach((c, i) => {
+    const t = Date.parse(c.at);
+    const when = Number.isNaN(t) ? "" : ` · ${relativeDate(t / 1000)}`;
+    const tags = [where, i === 0 && resolved ? "risolta" : "", i === 0 && c.outdated ? "riga cambiata" : ""].filter(Boolean).join(" · ");
+    out.push({ t: "comment", text: `${c.author}${when}${tags ? ` · ${tags}` : ""}`, head: true, reply: i > 0, resolved, url: c.url });
+    const lines = c.body.split(/\r?\n/).filter((l, k, all) => l.trim() || (k > 0 && all[k - 1].trim()));
+    for (const l of lines.slice(0, MAX_COMMENT_LINES)) out.push({ t: "comment", text: l, head: false, reply: i > 0, resolved, url: c.url });
+    if (lines.length > MAX_COMMENT_LINES) out.push({ t: "comment", text: "… continua sulla pull request", head: false, reply: i > 0, resolved, url: c.url });
+  });
+  return out;
+}
 
 interface Props {
   name: "history" | "changes" | "review";
@@ -38,11 +68,39 @@ export function DiffView(props: Props): JSX.Element {
       if (e.error) return out.push({ t: "note", text: `Diff non disponibile: ${e.error}`, cls: "error" });
       const d = e.diff;
       if (!d) return;
-      if (d.binary) return out.push({ t: "note", text: "File binario: il contenuto non viene confrontato." });
-      if (!d.hunks.length) out.push({ t: "note", text: e.status === "R" ? "Solo rinominato: nessuna modifica al contenuto." : "Nessuna modifica di testo." });
-      for (const h of d.hunks) {
+      if (d.binary) out.push({ t: "note", text: "File binario: il contenuto non viene confrontato." });
+      else if (!d.hunks.length) out.push({ t: "note", text: e.status === "R" ? "Solo rinominato: nessuna modifica al contenuto." : "Nessuna modifica di testo." });
+      // pull request threads go under the line they were written on
+      const threads = threadsOf(e.comments ?? []);
+      const at = new Map<string, PrComment[][]>();
+      for (const th of threads) {
+        const c = th[0];
+        if (c.line === null) continue;
+        const k = `${c.side}:${c.line}`;
+        at.set(k, [...(at.get(k) ?? []), th]);
+      }
+      const placed = new Set<PrComment[]>();
+      const place = (k: string) => {
+        for (const th of at.get(k) ?? []) {
+          if (placed.has(th)) continue;
+          placed.add(th);
+          out.push(...commentRows(th));
+        }
+      };
+      for (const h of d.binary ? [] : d.hunks) {
         out.push({ t: "hunk", text: h.header });
-        for (const l of h.lines) out.push({ t: "line", l });
+        for (const l of h.lines) {
+          out.push({ t: "line", l });
+          if (!at.size) continue;
+          if (l.newNo !== null) place(`new:${l.newNo}`);
+          if (l.oldNo !== null && l.kind !== "add") place(`old:${l.oldNo}`);
+        }
+      }
+      const rest = threads.filter((th) => !placed.has(th));
+      if (rest.length) {
+        const n = rest.length === 1 ? "1 discussione della pull request" : `${rest.length} discussioni della pull request`;
+        out.push({ t: "note", text: d.binary || !d.hunks.length ? `${n}:` : `${n} su righe non mostrate qui:`, cls: "banner" });
+        for (const th of rest) out.push(...commentRows(th, th[0].line === null ? "sul file" : `riga ${th[0].line}${th[0].side === "old" ? " (prima)" : ""}`));
       }
       if (d.truncated) out.push({ t: "note", text: "Diff troppo lungo: è stato troncato dal backend (20 000 righe).", cls: "warn" });
     });
@@ -132,6 +190,18 @@ export function DiffView(props: Props): JSX.Element {
             </Match>
             <Match when={row().t === "hunk" && (row() as Extract<Row, { t: "hunk" }>)}>{(h) => <div class="d-hunk">{h().text}</div>}</Match>
             <Match when={row().t === "line" && (row() as Extract<Row, { t: "line" }>)}>{(l) => <LineRow l={l().l} />}</Match>
+            <Match when={row().t === "comment" && (row() as Extract<Row, { t: "comment" }>)}>
+              {(c) => (
+                <div
+                  class="d-comment"
+                  classList={{ head: c().head, reply: c().reply, resolved: c().resolved, link: !!c().url }}
+                  title={c().url ? "Apri la discussione nella pull request" : undefined}
+                  onClick={() => c().url && void api.openUrl(c().url!).catch(() => {})}
+                >
+                  {c().text}
+                </div>
+              )}
+            </Match>
             <Match when={row().t === "note" && (row() as Extract<Row, { t: "note" }>)}>
               {(n) => <div class={`d-note ${n().cls ?? ""}`}>{n().text}</div>}
             </Match>

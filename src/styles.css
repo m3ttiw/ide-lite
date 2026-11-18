@@ -1356,6 +1356,159 @@ body.resizing-h * {
   border-color: var(--blue);
 }
 
+/* pull request of the reviewed branch */
+.rv-pr {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px 14px 7px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--ui);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rv-pr-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rv-pr-line.chips {
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.rv-pr-line.chips:empty {
+  display: none;
+}
+
+.rv-pr-link {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--blue);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rv-pr-link:hover {
+  text-decoration: underline;
+}
+
+.rv-pr-state {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 9px;
+  font-size: 11px;
+  line-height: 16px;
+  background: var(--sel);
+  color: var(--muted);
+}
+
+.rv-pr-state.open {
+  background: rgba(127, 209, 139, 0.16);
+  color: var(--green);
+}
+
+.rv-pr-state.merged {
+  background: rgba(199, 155, 242, 0.16);
+  color: var(--purple);
+}
+
+.rv-pr-state.closed {
+  background: rgba(240, 144, 144, 0.14);
+  color: var(--red);
+}
+
+.rv-pr-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rv-chip {
+  flex: none;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  line-height: 17px;
+}
+
+button.rv-chip {
+  cursor: pointer;
+}
+
+.rv-chip.ok {
+  border-color: rgba(127, 209, 139, 0.45);
+  color: var(--green);
+}
+
+.rv-chip.warn {
+  border-color: rgba(232, 195, 122, 0.45);
+  color: var(--yellow);
+}
+
+.rv-chip.bad {
+  border-color: rgba(240, 144, 144, 0.5);
+  color: var(--red);
+}
+
+.warn-text {
+  color: var(--accent);
+}
+
+.rv-cm {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--blue);
+  font-size: 11px;
+}
+
+/* pull request comments inside a diff */
+.d-comment {
+  height: 100%;
+  margin-left: 82px;
+  padding: 0 12px;
+  border-left: 2px solid var(--blue);
+  background: rgba(124, 196, 232, 0.07);
+  font-family: var(--ui);
+  font-size: 12px;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.d-comment.head {
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.d-comment.reply {
+  padding-left: 28px;
+}
+
+.d-comment.resolved {
+  border-left-color: var(--dim);
+  opacity: 0.6;
+}
+
+.d-comment.link {
+  cursor: pointer;
+}
+
 /* ------------------------------------------------------------ virtual list */
 
 .vlist {

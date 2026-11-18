@@ -281,6 +281,8 @@ struct Http {
     client: reqwest::Client,
     auth: Option<Auth>,
     github: bool,
+    /// Details that could not be read (checks, comments…): the rest is still shown.
+    warnings: std::sync::Mutex<Vec<String>>,
 }
 
 impl Http {
@@ -293,7 +295,20 @@ impl Http {
             .timeout(Duration::from_secs(20))
             .build()
             .map_err(|e| format!("http client: {e}"))?;
-        Ok(Http { client, auth, github })
+        Ok(Http { client, auth, github, warnings: Default::default() })
+    }
+
+    /// A detail of the pull request: a failure is noted and reads as None.
+    async fn detail(&self, what: &str, url: &str) -> Option<Value> {
+        match self.get(url).await {
+            Ok(v) => Some(v),
+            Err(Fail::Auth(m) | Fail::Other(m)) => {
+                if let Ok(mut w) = self.warnings.lock() {
+                    w.push(format!("{what}: {m}"));
+                }
+                None
+            }
+        }
     }
 
     async fn get(&self, url: &str) -> Result<Value, Fail> {
@@ -491,16 +506,16 @@ async fn github(http: &Http, api: &str, owner: &str, repo: &str, branch: &str) -
     let Some(p) = github_pick(&list) else { return Ok(None) };
     let Some(mut pr) = github_pr(p) else { return Ok(None) };
     let n = pr.number;
-    let reviews = http.get(&format!("{root}/pulls/{n}/reviews?per_page=100")).await.unwrap_or(Value::Null);
+    let reviews = http.detail("reviews", &format!("{root}/pulls/{n}/reviews?per_page=100")).await.unwrap_or(Value::Null);
     pr.reviewers = github_reviewers(p, &reviews);
     if let Some(sha) = pr.head_commit.clone() {
-        let runs = http.get(&format!("{root}/commits/{sha}/check-runs?per_page=100")).await.unwrap_or(Value::Null);
-        let statuses = http.get(&format!("{root}/commits/{sha}/status?per_page=100")).await.unwrap_or(Value::Null);
+        let runs = http.detail("check runs", &format!("{root}/commits/{sha}/check-runs?per_page=100")).await.unwrap_or(Value::Null);
+        let statuses = http.detail("commit statuses", &format!("{root}/commits/{sha}/status?per_page=100")).await.unwrap_or(Value::Null);
         pr.checks = github_checks(&runs, &statuses);
     }
     let mut comments = Vec::new();
     for page in 1..=6 {
-        let Ok(v) = http.get(&format!("{root}/pulls/{n}/comments?per_page=100&page={page}")).await else { break };
+        let Some(v) = http.detail("comments", &format!("{root}/pulls/{n}/comments?per_page=100&page={page}")).await else { break };
         let batch = v.as_array().cloned().unwrap_or_default();
         let last = batch.len() < 100;
         comments.extend(batch);
@@ -644,11 +659,11 @@ async fn azure(http: &Http, base: &str, project: &str, repo: &str, branch: &str,
     if let Some(project_id) = s(p, "/repository/project/id") {
         let artifact = format!("vstfs:///CodeReview/CodeReviewId/{project_id}/{id}");
         let url = with_query(&format!("{base}/{project}/_apis/policy/evaluations"), &[("artifactId", &artifact), ("api-version", "7.1-preview.1")]);
-        if let Ok(v) = http.get(&url).await {
+        if let Some(v) = http.detail("policies", &url).await {
             pr.checks = azure_checks(&v, base, project);
         }
     }
-    if let Ok(v) = http.get(&format!("{api}/pullRequests/{id}/threads?api-version=7.1")).await {
+    if let Some(v) = http.detail("threads", &format!("{api}/pullRequests/{id}/threads?api-version=7.1")).await {
         pr.comments = azure_comments(&v, &pr.url);
     }
     Ok(Some(pr))
@@ -745,7 +760,9 @@ pub async fn pull_request(root: String) -> Result<PrLookup, String> {
         Ok(Some(mut pr)) => {
             let (dir, remote, target) = (local.dir, local.remote_name, pr.target_branch.clone());
             pr.base_ref = blocking(move || resolve_base(&dir, &remote, &target)).await?;
-            Ok(PrLookup { status: "found".into(), pr: Some(pr), ..base })
+            let warnings = http.warnings.lock().map(|w| w.join("; ")).unwrap_or_default();
+            let message = (!warnings.is_empty()).then_some(warnings);
+            Ok(PrLookup { status: "found".into(), pr: Some(pr), message, ..base })
         }
         Err(Fail::Auth(m)) => {
             let m = if had_auth { m } else { format!("no credentials ({m})") };
